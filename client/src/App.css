@@ -1,0 +1,256 @@
+/* -------------------------------------------------------------------------- */
+/*  GLOBAL THEME                                                              */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --bg: #0a0f1c;
+  --bg-card: #111827;
+  --bg-card-light: #1f2937;
+  --text: #e5e7eb;
+  --text-muted: #9ca3af;
+  --primary: #6366f1;
+  --positive: #22c55e;
+  --negative: #ef4444;
+
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.16), transparent),
+              radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.12), transparent),
+              var(--bg);
+  color: var(--text);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ROOT LAYOUT                                                               */
+/* -------------------------------------------------------------------------- */
+
+.app-root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  HEADER                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.025em;
+}
+
+.app-header p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 36rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  UPLOAD FORM                                                               */
+/* -------------------------------------------------------------------------- */
+
+.upload-form {
+  background: var(--bg-card);
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.upload-form input[type="file"] {
+  background: var(--bg-card-light);
+  padding: 0.45rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.07);
+  color: var(--text-muted);
+}
+
+.upload-form button {
+  background: var(--primary);
+  border: none;
+  color: white;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.upload-form button:hover {
+  opacity: 0.85;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  TABS                                                                      */
+/* -------------------------------------------------------------------------- */
+
+nav button {
+  background: transparent;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  border: none;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  transition: 0.2s;
+}
+
+nav button:hover {
+  color: var(--text);
+}
+
+nav button[style*="border-bottom: 2px solid"] {
+  color: white !important;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  METRICS GRID                                                              */
+/* -------------------------------------------------------------------------- */
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: var(--bg-card);
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.metric-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.metric-card p {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.positive {
+  color: var(--positive);
+}
+
+.negative {
+  color: var(--negative);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  CARDS                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.card {
+  background: var(--bg-card);
+  padding: 1.4rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 1.5rem;
+}
+
+.chart-card {
+  height: 340px;
+}
+
+.card h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  TABLES                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text);
+}
+
+table th {
+  background: var(--bg-card-light);
+  padding: 0.7rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+table td {
+  padding: 0.7rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.92rem;
+}
+
+tr:hover td {
+  background: rgba(255,255,255,0.03);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  LAYOUT COLUMNS                                                            */
+/* -------------------------------------------------------------------------- */
+
+.app-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1.5rem;
+}
+
+.left-column,
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MUTED TEXT                                                                */
+/* -------------------------------------------------------------------------- */
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MOBILE                                                                   */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .app-header {
+    flex-direction: column;
+  }
+}
