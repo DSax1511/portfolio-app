@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+yfinance
+pandas
+python-multipart
+numpy
+pyyaml
+pytest
+hypothesis
+pydantic<2
+
