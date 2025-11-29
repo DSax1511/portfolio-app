@@ -952,1230 +952,1376 @@ function App() {
         )}
         {/* ANALYTICS TAB ---------------------------------------------------- */}
         {activeTab === "analytics" && (
-          <section className="card">
-            <h2>Quant Analytics & Backtests</h2>
-            <div className="analytics-grid">
-              <div className="analytics-form">
-                <h3>Portfolio Metrics</h3>
-                <label>
-                  Tickers (comma-separated)
-                  <input
-                    type="text"
-                    value={analyticsTickers}
-                    onChange={(e) => setAnalyticsTickers(e.target.value)}
-                    placeholder="AAPL,MSFT,SPY"
-                  />
-                </label>
-                <label>
-                  Weights (comma-separated, optional)
-                  <input
-                    type="text"
-                    value={analyticsWeights}
-                    onChange={(e) => setAnalyticsWeights(e.target.value)}
-                    placeholder="0.4,0.3,0.3"
-                  />
-                </label>
-                <div className="form-row">
-                  <label>
-                    Start date
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    End date
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                    />
-                  </label>
-                </div>
-                <button onClick={async () => {
-                  setMetricsLoading(true);
-                  setMetricsError("");
-                  setMetricsResult(null);
-                  try {
-                    const tickers = parseTickers();
-                    const weights = parseWeights();
-                    const data = await api.portfolioMetrics({
-                      tickers,
-                      weights,
-                      start_date: startDate || null,
-                      end_date: endDate || null,
-                    });
-                    setMetricsResult(data);
-                  } catch (err) {
-                    setMetricsError(err.message || "Metrics request failed");
-                  } finally {
-                    setMetricsLoading(false);
-                  }
-                }} disabled={metricsLoading}>
-                  {metricsLoading ? "Loading..." : "Compute metrics"}
-                </button>
-                {metricsError && <p className="error-text">{metricsError}</p>}
-              </div>
+          <section className="analytics-page">
+            <header className="analytics-page-header">
+              <h2>Quant Analytics & Backtests</h2>
+              <p className="muted">
+                Define a portfolio, run risk/return analytics, and simulate strategies, stress tests, and optimizations.
+              </p>
+            </header>
 
-              <div className="analytics-form">
-                <h3>Backtest</h3>
-                <label>
-                  Strategy
-                  <select
-                    value={strategy}
-                    onChange={(e) => setStrategy(e.target.value)}
-                  >
-                    <option value="buy_and_hold">Buy & Hold</option>
-                    <option value="sma_crossover">SMA Crossover</option>
-                    <option value="momentum">Momentum (top N)</option>
-                    <option value="min_vol">Min Volatility</option>
-                    <option value="mean_reversion">Mean Reversion (RSI)</option>
-                  </select>
-                </label>
-                {["sma_crossover", "momentum", "mean_reversion", "min_vol"].includes(strategy) && (
+            <div className="analytics-section">
+              <div className="section-heading">
+                <h3>Portfolio Setup</h3>
+                <p className="muted">Define the portfolio inputs and configure your backtest run.</p>
+              </div>
+              <div className="analytics-grid">
+                <div className="analytics-form">
+                  <h3>Portfolio Metrics</h3>
+                  <label>
+                    Tickers (comma-separated)
+                    <input
+                      type="text"
+                      value={analyticsTickers}
+                      onChange={(e) => setAnalyticsTickers(e.target.value)}
+                      placeholder="AAPL,MSFT,SPY"
+                    />
+                  </label>
+                  <label>
+                    Weights (comma-separated, optional)
+                    <input
+                      type="text"
+                      value={analyticsWeights}
+                      onChange={(e) => setAnalyticsWeights(e.target.value)}
+                      placeholder="0.4,0.3,0.3"
+                    />
+                  </label>
                   <div className="form-row">
                     <label>
-                      {strategy === "momentum"
-                        ? "Lookback (days)"
-                        : strategy === "mean_reversion"
-                        ? "RSI window"
-                        : strategy === "min_vol"
-                        ? "Lookback (vol window)"
-                        : "Fast window"}
+                      Start date
                       <input
-                        type="number"
-                        min="1"
-                        value={fastWindow}
-                        onChange={(e) => setFastWindow(Number(e.target.value))}
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
                       />
                     </label>
                     <label>
-                      {strategy === "momentum"
-                        ? "Top N"
-                        : strategy === "mean_reversion"
-                        ? "RSI threshold"
-                        : strategy === "min_vol"
-                        ? "Top N"
-                        : "Slow window"}
+                      End date
                       <input
-                        type="number"
-                        min="1"
-                        value={slowWindow}
-                        onChange={(e) => setSlowWindow(Number(e.target.value))}
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
                       />
                     </label>
                   </div>
-                )}
-                <label>
-                  Rebalance frequency
-                  <select
-                    value={rebalanceFrequency}
-                    onChange={(e) => setRebalanceFrequency(e.target.value)}
-                  >
-                    <option value="none">None</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="annual">Annual</option>
-                  </select>
-                </label>
-                <label>
-                  Benchmark (for rolling beta/alpha)
-                  <input
-                    type="text"
-                    value={backtestBenchmark}
-                    onChange={(e) => setBacktestBenchmark(e.target.value.toUpperCase())}
-                    placeholder="SPY"
-                  />
-                </label>
-                <button onClick={async () => {
-                  setBacktestLoading(true);
-                  setBacktestError("");
-                  setBacktestResult(null);
-                  try {
-                    const tickers = parseTickers();
-                    const weights = parseWeights();
-                    const body = {
-                      strategy,
-                      tickers,
-                      weights,
-                      start_date: startDate || null,
-                      end_date: endDate || null,
-                      rebalance_frequency: rebalanceFrequency,
-                      benchmark: backtestBenchmark || null,
-                      parameters:
-                        strategy === "sma_crossover"
-                          ? { fast_window: fastWindow, slow_window: slowWindow }
-                          : strategy === "momentum"
-                          ? { lookback: fastWindow, top_n: slowWindow }
-                          : strategy === "min_vol"
-                          ? { lookback: fastWindow, top_n: slowWindow }
+                  <button onClick={async () => {
+                    setMetricsLoading(true);
+                    setMetricsError("");
+                    setMetricsResult(null);
+                    try {
+                      const tickers = parseTickers();
+                      const weights = parseWeights();
+                      const data = await api.portfolioMetrics({
+                        tickers,
+                        weights,
+                        start_date: startDate || null,
+                        end_date: endDate || null,
+                      });
+                      setMetricsResult(data);
+                    } catch (err) {
+                      setMetricsError(err.message || "Metrics request failed");
+                    } finally {
+                      setMetricsLoading(false);
+                    }
+                  }} disabled={metricsLoading}>
+                    {metricsLoading ? "Loading..." : "Compute metrics"}
+                  </button>
+                  {metricsError && <p className="error-text">{metricsError}</p>}
+                </div>
+
+                <div className="analytics-form">
+                  <h3>Backtest</h3>
+                  <label>
+                    Strategy
+                    <select
+                      value={strategy}
+                      onChange={(e) => setStrategy(e.target.value)}
+                    >
+                      <option value="buy_and_hold">Buy & Hold</option>
+                      <option value="sma_crossover">SMA Crossover</option>
+                      <option value="momentum">Momentum (top N)</option>
+                      <option value="min_vol">Min Volatility</option>
+                      <option value="mean_reversion">Mean Reversion (RSI)</option>
+                    </select>
+                  </label>
+                  {["sma_crossover", "momentum", "mean_reversion", "min_vol"].includes(strategy) && (
+                    <div className="form-row">
+                      <label>
+                        {strategy === "momentum"
+                          ? "Lookback (days)"
                           : strategy === "mean_reversion"
-                          ? { window: fastWindow, threshold: slowWindow }
-                          : {},
-                    };
-                    const data = await api.backtest(body);
-                    setBacktestResult(data);
-                  } catch (err) {
-                    setBacktestError(err.message || "Backtest request failed");
-                  } finally {
-                    setBacktestLoading(false);
-                  }
-                }} disabled={backtestLoading}>
-                  {backtestLoading ? "Running..." : "Run backtest"}
-                </button>
-                {backtestError && <p className="error-text">{backtestError}</p>}
+                          ? "RSI window"
+                          : strategy === "min_vol"
+                          ? "Lookback (vol window)"
+                          : "Fast window"}
+                        <input
+                          type="number"
+                          min="1"
+                          value={fastWindow}
+                          onChange={(e) => setFastWindow(Number(e.target.value))}
+                        />
+                      </label>
+                      <label>
+                        {strategy === "momentum"
+                          ? "Top N"
+                          : strategy === "mean_reversion"
+                          ? "RSI threshold"
+                          : strategy === "min_vol"
+                          ? "Top N"
+                          : "Slow window"}
+                        <input
+                          type="number"
+                          min="1"
+                          value={slowWindow}
+                          onChange={(e) => setSlowWindow(Number(e.target.value))}
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <label>
+                    Rebalance frequency
+                    <select
+                      value={rebalanceFrequency}
+                      onChange={(e) => setRebalanceFrequency(e.target.value)}
+                    >
+                      <option value="none">None</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annual">Annual</option>
+                    </select>
+                  </label>
+                  <label>
+                    Benchmark (for rolling beta/alpha)
+                    <input
+                      type="text"
+                      value={backtestBenchmark}
+                      onChange={(e) => setBacktestBenchmark(e.target.value.toUpperCase())}
+                      placeholder="SPY"
+                    />
+                  </label>
+                  <button onClick={async () => {
+                    setBacktestLoading(true);
+                    setBacktestError("");
+                    setBacktestResult(null);
+                    try {
+                      const tickers = parseTickers();
+                      const weights = parseWeights();
+                      const body = {
+                        strategy,
+                        tickers,
+                        weights,
+                        start_date: startDate || null,
+                        end_date: endDate || null,
+                        rebalance_frequency: rebalanceFrequency,
+                        benchmark: backtestBenchmark || null,
+                        parameters:
+                          strategy === "sma_crossover"
+                            ? { fast_window: fastWindow, slow_window: slowWindow }
+                            : strategy === "momentum"
+                            ? { lookback: fastWindow, top_n: slowWindow }
+                            : strategy === "min_vol"
+                            ? { lookback: fastWindow, top_n: slowWindow }
+                            : strategy === "mean_reversion"
+                            ? { window: fastWindow, threshold: slowWindow }
+                            : {},
+                      };
+                      const data = await api.backtest(body);
+                      setBacktestResult(data);
+                    } catch (err) {
+                      setBacktestError(err.message || "Backtest request failed");
+                    } finally {
+                      setBacktestLoading(false);
+                    }
+                  }} disabled={backtestLoading}>
+                    {backtestLoading ? "Running..." : "Run backtest"}
+                  </button>
+                  {backtestError && <p className="error-text">{backtestError}</p>}
+                </div>
               </div>
             </div>
 
-            <div className="analytics-results">
-              <div className="card">
-                <h3>Metrics</h3>
-                {!metricsResult ? (
-                  <p className="muted">Run metrics to see results.</p>
-                ) : (
-                  <>
-                    <div className="stats-grid">
-                      {[
-                        { label: "Cumulative Return", key: "cumulative_return" },
-                        { label: "Annualized Return", key: "annualized_return" },
-                        { label: "Annualized Volatility", key: "annualized_volatility" },
-                        { label: "Sharpe Ratio", key: "sharpe_ratio" },
-                        { label: "Max Drawdown", key: "max_drawdown" },
-                      ].map((row) => (
-                        <div key={row.key} className="stat-box">
-                          <p className="muted">{row.label}</p>
-                          <p>
-                            {row.key === "sharpe_ratio"
-                              ? metricsResult.metrics[row.key].toFixed(2)
-                              : `${(metricsResult.metrics[row.key] * 100).toFixed(2)}%`}
-                          </p>
+            <div className="analytics-section">
+              <div className="section-heading">
+                <h3>Analysis & Results</h3>
+                <p className="muted">Review portfolio-level metrics and backtest performance.</p>
+              </div>
+              <div className="analytics-results">
+                <div className="card">
+                  <h3>Metrics</h3>
+                  {!metricsResult ? (
+                    <p className="muted">Run metrics to see results.</p>
+                  ) : (
+                    <>
+                      <div className="stats-grid">
+                        {[
+                          { label: "Cumulative Return", key: "cumulative_return" },
+                          { label: "Annualized Return", key: "annualized_return" },
+                          { label: "Annualized Volatility", key: "annualized_volatility" },
+                          { label: "Sharpe Ratio", key: "sharpe_ratio" },
+                          { label: "Max Drawdown", key: "max_drawdown" },
+                        ].map((row) => (
+                          <div key={row.key} className="stat-box">
+                            <p className="muted">{row.label}</p>
+                            <p>
+                              {row.key === "sharpe_ratio"
+                                ? metricsResult.metrics[row.key].toFixed(2)
+                                : `${(metricsResult.metrics[row.key] * 100).toFixed(2)}%`}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="chart-title">Portfolio equity curve</p>
+                      <div className="chart-wrapper">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart
+                            data={metricsResult.equity_curve.dates.map((d, idx) => ({
+                              date: d,
+                              equity: metricsResult.equity_curve.equity[idx],
+                            }))}
+                            margin={{ left: 4, right: 4, top: 10, bottom: 0 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                            <XAxis
+                              dataKey="date"
+                              label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                              tick={false}
+                            />
+                            <YAxis
+                              tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
+                              label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <Tooltip
+                              formatter={(value) =>
+                                `${((value - 1) * 100).toFixed(2)}%`
+                              }
+                              labelFormatter={(label) => label}
+                            />
+                            <Line type="monotone" dataKey="equity" stroke="#6366f1" dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {backtestResult.benchmark && (
+                        <>
+                          <p className="chart-title">Rolling beta vs {backtestResult.benchmark.benchmark}</p>
+                          <div className="chart-wrapper">
+                            <ResponsiveContainer width="100%" height={200}>
+                              <LineChart
+                                data={rollingWithBeta(
+                                  backtestResult.returns,
+                                  backtestResult.benchmark.returns,
+                                  backtestResult.dates,
+                                  60
+                                ).map((row) => ({
+                                  date: row.date,
+                                  beta: row.beta,
+                                }))}
+                              >
+                                <XAxis
+                                  dataKey="date"
+                                  label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                                />
+                                <YAxis label={{ value: "Beta", angle: -90, position: "insideLeft" }} />
+                                <Tooltip formatter={(v) => Number(v).toFixed(2)} />
+                                <Line type="monotone" dataKey="beta" stroke="#f59e0b" dot={false} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="card">
+                  <h3>Backtest</h3>
+                  {!backtestResult ? (
+                    <p className="muted">Run a backtest to see results.</p>
+                  ) : (
+                    <>
+                      <div className="stats-grid">
+                        {[
+                          { label: "Cumulative Return", key: "cumulative_return" },
+                          { label: "Annualized Return", key: "annualized_return" },
+                          { label: "Annualized Volatility", key: "annualized_volatility" },
+                          { label: "Sharpe Ratio", key: "sharpe_ratio" },
+                          { label: "Max Drawdown", key: "max_drawdown" },
+                        ].map((row) => (
+                          <div key={row.key} className="stat-box">
+                            <p className="muted">{row.label}</p>
+                            <p>
+                              {row.key === "sharpe_ratio"
+                                ? backtestResult.metrics[row.key].toFixed(2)
+                                : `${(backtestResult.metrics[row.key] * 100).toFixed(2)}%`}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="chart-title">Backtest equity curve</p>
+                      <div className="chart-wrapper">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart
+                            data={backtestResult.equity_curve.dates.map((d, idx) => ({
+                              date: d,
+                              equity: backtestResult.equity_curve.equity[idx],
+                            }))}
+                            margin={{ left: 4, right: 4, top: 10, bottom: 0 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                            <XAxis
+                              dataKey="date"
+                              label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                              tick={false}
+                            />
+                            <YAxis
+                              tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
+                              label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <Tooltip
+                              formatter={(value) =>
+                                `${((value - 1) * 100).toFixed(2)}%`
+                              }
+                              labelFormatter={(label) => label}
+                            />
+                            <Line type="monotone" dataKey="equity" stroke="#22c55e" dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <p className="chart-title">Underwater (drawdown) curve</p>
+                      <div className="chart-wrapper">
+                        <ResponsiveContainer width="100%" height={200}>
+                          <AreaChart
+                            data={backtestResult.equity_curve.equity.map((v, idx) => ({
+                              date: backtestResult.equity_curve.dates[idx],
+                              dd: computeDrawdownSeries(backtestResult.equity_curve.equity)[idx],
+                            }))}
+                          >
+                            <XAxis
+                              dataKey="date"
+                              label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                              tick={false}
+                            />
+                            <YAxis
+                              tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                              label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
+                            <Area dataKey="dd" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <p className="chart-title">Rolling vol / Sharpe</p>
+                      <div className="chart-wrapper">
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart
+                            data={rollingWithBeta(
+                              backtestResult.returns,
+                              backtestResult.benchmark?.returns,
+                              backtestResult.dates,
+                              60
+                            ).map((row) => ({
+                              idx: row.idx,
+                              vol: row.vol * Math.sqrt(252),
+                              sharpe: row.sharpe,
+                              date: row.date,
+                            }))}
+                          >
+                            <XAxis
+                              dataKey="date"
+                              label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                              tick={false}
+                            />
+                            <YAxis label={{ value: "Value", angle: -90, position: "insideLeft" }} tick={{ fontSize: 12 }} />
+                            <Tooltip
+                              formatter={(v, name) =>
+                                name === "sharpe"
+                                  ? v.toFixed(2)
+                                  : `${(v * 100).toFixed(2)}%`
+                              }
+                            />
+                            <Line dataKey="vol" stroke="#60a5fa" dot={false} />
+                            <Line dataKey="sharpe" stroke="#f97316" dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="analytics-section">
+              <div className="section-heading">
+                <h3>Tools & Advanced Analytics</h3>
+                <p className="muted">Apply presets, size positions, rebalance, and explore advanced simulations.</p>
+              </div>
+
+              <div className="analytics-subsection">
+                <h4 className="section-title">Portfolio Tools</h4>
+                <div className="analytics-grid">
+                  <div className="card">
+                    <h3>Presets & Examples</h3>
+                    <div className="preset-row">
+                      <div className="preset-actions">
+                        <input
+                          type="text"
+                          placeholder="Preset name"
+                          value={presetName}
+                          onChange={(e) => setPresetName(e.target.value)}
+                        />
+                        <button
+                        onClick={() => {
+                          if (!presetName) return;
+                          const tickers = parseTickers();
+                          const weights = parseWeights();
+                          const newPreset = { name: presetName, tickers, weights };
+                          setPresets([...presets, newPreset]);
+                          api.savePreset(newPreset).catch(() => {});
+                          setPresetName("");
+                        }}
+                      >
+                          Save preset
+                        </button>
+                      </div>
+                      <div className="preset-buttons">
+                        {presets.map((p) => (
+                          <button
+                            key={p.name}
+                            onClick={() => {
+                              setAnalyticsTickers(p.tickers.join(","));
+                              setAnalyticsWeights(p.weights ? p.weights.join(",") : "");
+                            }}
+                          >
+                            Load {p.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="preset-buttons">
+                        {[
+                          { label: "Momentum Portfolio", tickers: "MTUM,QQQ,SPY", weights: "0.5,0.3,0.2" },
+                          { label: "Tech Tilt", tickers: "AAPL,MSFT,NVDA,QQQ", weights: "0.3,0.3,0.2,0.2" },
+                          { label: "Risk Parity", tickers: "SPY,TLT,GLD", weights: "0.4,0.4,0.2" },
+                        ].map((ex) => (
+                          <button
+                            key={ex.label}
+                            onClick={() => {
+                              setAnalyticsTickers(ex.tickers);
+                              setAnalyticsWeights(ex.weights);
+                            }}
+                          >
+                            {ex.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card analytics-grid">
+                    <div className="analytics-form">
+                      <h3>Position Sizing</h3>
+                      <div className="form-row">
+                        <label>
+                          Ticker
+                          <input
+                            value={positionSizingForm.ticker}
+                            onChange={(e) => setPositionSizingForm({ ...positionSizingForm, ticker: e.target.value })}
+                            placeholder="NVDA"
+                          />
+                        </label>
+                        <label>
+                          Risk per trade (%)
+                          <input
+                            type="number"
+                            value={positionSizingForm.risk_per_trade_pct}
+                            onChange={(e) => setPositionSizingForm({ ...positionSizingForm, risk_per_trade_pct: Number(e.target.value) })}
+                            step="0.1"
+                          />
+                        </label>
+                      </div>
+                      <div className="form-row">
+                        <label>
+                          Entry price
+                          <input
+                            type="number"
+                            value={positionSizingForm.entry_price}
+                            onChange={(e) => setPositionSizingForm({ ...positionSizingForm, entry_price: Number(e.target.value) })}
+                          />
+                        </label>
+                        <label>
+                          Stop price
+                          <input
+                            type="number"
+                            value={positionSizingForm.stop_price}
+                            onChange={(e) => setPositionSizingForm({ ...positionSizingForm, stop_price: Number(e.target.value) })}
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        Portfolio value
+                        <input
+                          type="number"
+                          value={positionSizingForm.portfolio_value}
+                          onChange={(e) => setPositionSizingForm({ ...positionSizingForm, portfolio_value: Number(e.target.value) })}
+                        />
+                      </label>
+                      <button
+                        onClick={async () => {
+                          setPositionSizingLoading(true);
+                          setPositionSizingError("");
+                          try {
+                            const data = await api.positionSizing(positionSizingForm);
+                            setPositionSizingResult(data);
+                          } catch (err) {
+                            setPositionSizingError(err.message || "Position sizing failed");
+                          } finally {
+                            setPositionSizingLoading(false);
+                          }
+                        }}
+                        disabled={positionSizingLoading}
+                      >
+                        {positionSizingLoading ? "Calculating..." : "Calculate size"}
+                      </button>
+                      {positionSizingError && <p className="error-text">{positionSizingError}</p>}
+                      {positionSizingResult && (
+                        <div className="stats-grid">
+                          <div className="stat-box">
+                            <p className="muted">Shares</p>
+                            <p>{positionSizingResult.shares}</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Position value</p>
+                            <p>${formatCurrency(positionSizingResult.position_value)}</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Risk ($)</p>
+                            <p>${formatCurrency(positionSizingResult.risk_amount)}</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Risk % of portfolio</p>
+                            <p>{positionSizingResult.risk_pct_of_portfolio.toFixed(2)}%</p>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
-                    <p className="chart-title">Portfolio equity curve</p>
-                    <div className="chart-wrapper">
-                      <ResponsiveContainer width="100%" height={260}>
-                        <LineChart
-                          data={metricsResult.equity_curve.dates.map((d, idx) => ({
-                            date: d,
-                            equity: metricsResult.equity_curve.equity[idx],
-                          }))}
-                          margin={{ left: 4, right: 4, top: 10, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis
-                            dataKey="date"
-                            label={{ value: "Date", position: "insideBottom", offset: -5 }}
-                            tick={false}
-                          />
-                          <YAxis
-                            tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
-                            label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip
-                            formatter={(value) =>
-                              `${((value - 1) * 100).toFixed(2)}%`
-                            }
-                            labelFormatter={(label) => label}
-                          />
-                          <Line type="monotone" dataKey="equity" stroke="#6366f1" dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
+
+                    <div className="analytics-form">
+                      <h3>Rebalance Suggestions</h3>
+                      <label>
+                        Tickers
+                        <input
+                          value={rebalanceForm.tickers}
+                          onChange={(e) => setRebalanceForm({ ...rebalanceForm, tickers: e.target.value })}
+                          placeholder="AAPL,MSFT,SPY"
+                        />
+                      </label>
+                      <label>
+                        Current weights (comma-separated)
+                        <input
+                          value={rebalanceForm.current_weights}
+                          onChange={(e) => setRebalanceForm({ ...rebalanceForm, current_weights: e.target.value })}
+                          placeholder="0.5,0.3,0.2"
+                        />
+                      </label>
+                      <label>
+                        Target weights (comma-separated)
+                        <input
+                          value={rebalanceForm.target_weights}
+                          onChange={(e) => setRebalanceForm({ ...rebalanceForm, target_weights: e.target.value })}
+                          placeholder="0.4,0.3,0.3"
+                        />
+                      </label>
+                      <label>
+                        Prices (comma-separated)
+                        <input
+                          value={rebalanceForm.prices}
+                          onChange={(e) => setRebalanceForm({ ...rebalanceForm, prices: e.target.value })}
+                          placeholder="200,400,500"
+                        />
+                      </label>
+                      <label>
+                        Portfolio value
+                        <input
+                          type="number"
+                          value={rebalanceForm.portfolio_value}
+                          onChange={(e) => setRebalanceForm({ ...rebalanceForm, portfolio_value: Number(e.target.value) })}
+                        />
+                      </label>
+                      <button
+                        onClick={async () => {
+                          setRebalanceLoading(true);
+                          setRebalanceError("");
+                          try {
+                            const payload = {
+                              tickers: rebalanceForm.tickers.split(",").map((t) => t.trim()).filter(Boolean),
+                              current_weights: rebalanceForm.current_weights.split(",").map((v) => Number(v.trim())),
+                              target_weights: rebalanceForm.target_weights.split(",").map((v) => Number(v.trim())),
+                              prices: rebalanceForm.prices.split(",").map((v) => Number(v.trim())),
+                              portfolio_value: Number(rebalanceForm.portfolio_value),
+                            };
+                            const data = await api.rebalance(payload);
+                            setRebalanceResult(data);
+                          } catch (err) {
+                            setRebalanceError(err.message || "Rebalance failed");
+                          } finally {
+                            setRebalanceLoading(false);
+                          }
+                        }}
+                        disabled={rebalanceLoading}
+                      >
+                        {rebalanceLoading ? "Computing..." : "Get trades"}
+                      </button>
+                      {rebalanceError && <p className="error-text">{rebalanceError}</p>}
+                      {rebalanceResult && (
+                        <>
+                          <p className="muted">Estimated turnover: {rebalanceResult.estimated_turnover_pct}%</p>
+                          <div className="table-wrapper">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Ticker</th>
+                                  <th>Action</th>
+                                  <th>Shares</th>
+                                  <th>Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rebalanceResult.trades.map((t) => (
+                                  <tr key={t.ticker + t.action}>
+                                    <td>{t.ticker}</td>
+                                    <td style={{ textTransform: "capitalize" }}>{t.action}</td>
+                                    <td>{t.shares}</td>
+                                    <td>${formatCurrency(t.value)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    {backtestResult.benchmark && (
+                  </div>
+                </div>
+              </div>
+
+              <div className="analytics-subsection">
+                <h4 className="section-title">Advanced Analytics</h4>
+                <div className="analytics-grid">
+                  <div className="card">
+                    <h3>Factor Exposures & Risk</h3>
+                    <div className="action-row">
+                      <button
+                        onClick={async () => {
+                          setFactorLoading(true);
+                          setFactorError("");
+                          try {
+                            const data = await api.factorExposures({
+                              tickers: parseTickers(),
+                              weights: parseWeights(),
+                              start_date: startDate || null,
+                              end_date: endDate || null,
+                            });
+                            setFactorResult(data);
+                          } catch (err) {
+                            setFactorError(err.message || "Factor request failed");
+                          } finally {
+                            setFactorLoading(false);
+                          }
+                        }}
+                        disabled={factorLoading}
+                      >
+                        {factorLoading ? "Loading..." : "Run factor regression"}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setRiskLoading(true);
+                          setRiskError("");
+                          try {
+                            const data = await api.riskBreakdown({
+                              tickers: parseTickers(),
+                              weights: parseWeights(),
+                              start_date: startDate || null,
+                              end_date: endDate || null,
+                            });
+                            setRiskResult(data);
+                          } catch (err) {
+                            setRiskError(err.message || "Risk breakdown failed");
+                          } finally {
+                            setRiskLoading(false);
+                          }
+                        }}
+                        disabled={riskLoading}
+                      >
+                        {riskLoading ? "Loading..." : "Risk breakdown"}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setBenchmarkLoading(true);
+                          setBenchmarkError("");
+                          try {
+                            const data = await api.benchmark({
+                              tickers: parseTickers(),
+                              weights: parseWeights(),
+                              benchmark,
+                              start_date: startDate || null,
+                              end_date: endDate || null,
+                            });
+                            setBenchmarkResult(data);
+                          } catch (err) {
+                            setBenchmarkError(err.message || "Benchmark failed");
+                          } finally {
+                            setBenchmarkLoading(false);
+                          }
+                        }}
+                        disabled={benchmarkLoading}
+                      >
+                        {benchmarkLoading ? "Loading..." : "Compare to benchmark"}
+                      </button>
+                      <input
+                        type="text"
+                        value={benchmark}
+                        onChange={(e) => setBenchmark(e.target.value.toUpperCase())}
+                        placeholder="Benchmark (SPY)"
+                        style={{ maxWidth: 120 }}
+                      />
+                    </div>
+                    {factorError && <p className="error-text">{factorError}</p>}
+                    {riskError && <p className="error-text">{riskError}</p>}
+                    {benchmarkError && <p className="error-text">{benchmarkError}</p>}
+                    <div className="analytics-grid">
+                      <div className="stat-box">
+                        <p className="muted">Alpha / Beta</p>
+                        <p>
+                          {benchmarkResult
+                            ? `α ${(benchmarkResult.alpha * 100).toFixed(2)}% · β ${benchmarkResult.beta.toFixed(2)}`
+                            : "Run benchmark"}
+                        </p>
+                      </div>
+                      <div className="stat-box">
+                        <p className="muted">Tracking Error</p>
+                        <p>
+                          {benchmarkResult
+                            ? `${benchmarkResult.tracking_error.toFixed(3)}`
+                            : "—"}
+                        </p>
+                      </div>
+                      <div className="stat-box">
+                        <p className="muted">Factor R²</p>
+                        <p>{factorResult ? factorResult.r2.toFixed(2) : "—"}</p>
+                      </div>
+                      <div className="stat-box">
+                        <p className="muted">Residual Vol</p>
+                        <p>
+                          {factorResult
+                            ? `${(factorResult.residual_vol * 100).toFixed(2)}%`
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    {factorResult && (
                       <>
-                        <p className="chart-title">Rolling beta vs {backtestResult.benchmark.benchmark}</p>
+                        <p className="chart-title">Factor loadings</p>
                         <div className="chart-wrapper">
-                          <ResponsiveContainer width="100%" height={200}>
+                          <ResponsiveContainer width="100%" height={240}>
+                            <BarChart data={factorResult.loadings}>
+                              <XAxis
+                                dataKey="factor"
+                                label={{ value: "Factor", position: "insideBottom", offset: -5 }}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <YAxis label={{ value: "Beta", angle: -90, position: "insideLeft" }} tick={{ fontSize: 12 }} />
+                              <Tooltip formatter={(v) => v.toFixed(2)} />
+                              <Bar dataKey="beta" fill="#60a5fa" radius={[8, 8, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    )}
+                    {riskResult && (
+                      <>
+                        <h4>Variance Contribution</h4>
+                        <p className="chart-title">Contribution to variance</p>
+                        <ResponsiveContainer width="100%" height={240}>
+                          <BarChart data={riskResult.contribution}>
+                            <XAxis
+                              dataKey="ticker"
+                              label={{ value: "Ticker", position: "insideBottom", offset: -5 }}
+                              tick={{ fontSize: 12 }}
+                              interval="preserveStartEnd"
+                            />
+                            <YAxis
+                              tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
+                              label={{ value: "% of portfolio variance", angle: -90, position: "insideLeft" }}
+                            />
+                            <Tooltip formatter={(v) => `${(v * 100).toFixed(1)}%`} />
+                            <Bar dataKey="contribution" fill="#22c55e" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                        <p className="chart-title">Rolling correlation matrix (30D)</p>
+                        <div className="table-wrapper">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th></th>
+                                {riskResult.tickers.map((t) => (
+                                  <th key={t}>{t}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {riskResult.corr_matrix.map((row, i) => (
+                                <tr key={riskResult.tickers[i]}>
+                                  <td>{riskResult.tickers[i]}</td>
+                                  {row.map((val, j) => (
+                                    <td key={j}>{val.toFixed(2)}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                    {benchmarkResult && (
+                      <>
+                        <p className="chart-title">Benchmark equity curve ({benchmarkResult.benchmark})</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={220}>
                             <LineChart
-                              data={rollingWithBeta(
-                                backtestResult.returns,
-                                backtestResult.benchmark.returns,
-                                backtestResult.dates,
-                                60
-                              ).map((row) => ({
-                                date: row.date,
-                                beta: row.beta,
+                              data={benchmarkResult.equity_curve.dates.map((d, idx) => ({
+                                date: d,
+                                equity: benchmarkResult.equity_curve.equity[idx],
                               }))}
                             >
                               <XAxis
                                 dataKey="date"
                                 label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                                tick={false}
                               />
-                              <YAxis label={{ value: "Beta", angle: -90, position: "insideLeft" }} />
-                              <Tooltip formatter={(v) => Number(v).toFixed(2)} />
-                              <Line type="monotone" dataKey="beta" stroke="#f59e0b" dot={false} />
+                              <YAxis
+                                tickFormatter={(v) => `${((v - 1) * 100).toFixed(1)}%`}
+                                label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <Tooltip
+                                formatter={(value) => `${((value - 1) * 100).toFixed(2)}%`}
+                                labelFormatter={(label) => label}
+                              />
+                              <Line type="monotone" dataKey="equity" stroke="#60a5fa" dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <p className="chart-title">Benchmark underwater (drawdown)</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={180}>
+                            <AreaChart
+                              data={benchmarkResult.equity_curve.equity.map((v, idx) => ({
+                                date: benchmarkResult.equity_curve.dates[idx],
+                                dd: computeDrawdownSeries(benchmarkResult.equity_curve.equity)[idx],
+                              }))}
+                            >
+                              <XAxis
+                                dataKey="date"
+                                label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                                tick={false}
+                              />
+                              <YAxis
+                                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                                label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
+                              />
+                              <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
+                              <Area dataKey="dd" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <p className="chart-title">Benchmark rolling Sharpe (60D)</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={200}>
+                            <LineChart
+                              data={rollingWithBeta(
+                                benchmarkResult.returns,
+                                benchmarkResult.returns,
+                                benchmarkResult.dates,
+                                60
+                              ).map((row) => ({
+                                date: row.date,
+                                sharpe: row.sharpe,
+                              }))}
+                            >
+                              <XAxis
+                                dataKey="date"
+                                label={{ value: "Date", position: "insideBottom", offset: -5 }}
+                                tick={false}
+                              />
+                              <YAxis label={{ value: "Sharpe", angle: -90, position: "insideLeft" }} />
+                              <Tooltip formatter={(v) => v.toFixed(2)} />
+                              <Line dataKey="sharpe" stroke="#22c55e" dot={false} />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
                       </>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
 
-              <div className="card">
-                <h3>Backtest</h3>
-                {!backtestResult ? (
-                  <p className="muted">Run a backtest to see results.</p>
-                ) : (
-                  <>
-                    <div className="stats-grid">
-                      {[
-                        { label: "Cumulative Return", key: "cumulative_return" },
-                        { label: "Annualized Return", key: "annualized_return" },
-                        { label: "Annualized Volatility", key: "annualized_volatility" },
-                        { label: "Sharpe Ratio", key: "sharpe_ratio" },
-                        { label: "Max Drawdown", key: "max_drawdown" },
-                      ].map((row) => (
-                        <div key={row.key} className="stat-box">
-                          <p className="muted">{row.label}</p>
-                          <p>
-                            {row.key === "sharpe_ratio"
-                              ? backtestResult.metrics[row.key].toFixed(2)
-                              : `${(backtestResult.metrics[row.key] * 100).toFixed(2)}%`}
-                          </p>
+                  <div className="card">
+                    <h3>Monte Carlo & Stress Tests</h3>
+                    <div className="form-row">
+                      <label>
+                        Simulations
+                        <input
+                          type="number"
+                          min="1"
+                          value={mcParams?.num_simulations ?? 200}
+                          onChange={(e) => setMcParams({ ...(mcParams || {}), num_simulations: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        Days
+                        <input
+                          type="number"
+                          min="10"
+                          value={mcParams?.days ?? 252}
+                          onChange={(e) => setMcParams({ ...(mcParams || {}), days: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        Daily drift (μ)
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={mcParams?.drift ?? 0.0005}
+                          onChange={(e) => setMcParams({ ...(mcParams || {}), drift: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        Daily vol (σ)
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={mcParams?.vol ?? 0.02}
+                          onChange={(e) => setMcParams({ ...(mcParams || {}), vol: Number(e.target.value) })}
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Stress scenario
+                        <select value={stressScenario} onChange={(e) => setStressScenario(e.target.value)}>
+                          <option value="covid">COVID Crash</option>
+                          <option value="gfc">2008 GFC</option>
+                          <option value="dotcom">Dotcom Bust</option>
+                        </select>
+                      </label>
+                      <label>
+                        Portfolio (tickers)
+                        <input
+                          type="text"
+                          value={analyticsTickers}
+                          onChange={(e) => setAnalyticsTickers(e.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <div className="action-row">
+                      <button
+                        onClick={async () => {
+                          setMcLoading(true);
+                          setMcError("");
+                          try {
+                            const data = await api.monteCarlo({
+                              tickers: parseTickers(),
+                              weights: parseWeights(),
+                              ...mcParams,
+                            });
+                            setMcResult(data);
+                          } catch (err) {
+                            setMcError(err.message || "Monte Carlo failed");
+                          } finally {
+                            setMcLoading(false);
+                          }
+                        }}
+                        disabled={mcLoading}
+                      >
+                        {mcLoading ? "Simulating..." : "Run Monte Carlo"}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setStressLoading(true);
+                          setStressError("");
+                          try {
+                            const data = await api.stressTest({
+                              tickers: parseTickers(),
+                              weights: parseWeights(),
+                              scenario: stressScenario,
+                            });
+                            setStressResult(data);
+                          } catch (err) {
+                            setStressError(err.message || "Stress test failed");
+                          } finally {
+                            setStressLoading(false);
+                          }
+                        }}
+                        disabled={stressLoading}
+                      >
+                        {stressLoading ? "Running..." : "Run stress test"}
+                      </button>
+                    </div>
+                    {mcError && <p className="error-text">{mcError}</p>}
+                    {stressError && <p className="error-text">{stressError}</p>}
+                    {mcResult && (
+                      <>
+                        <div className="stats-grid">
+                          <div className="stat-box">
+                            <p className="muted">Mean return</p>
+                            <p>{(mcResult.mean_return * 100).toFixed(2)}%</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Median return</p>
+                            <p>{(mcResult.median_return * 100).toFixed(2)}%</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">VaR (5%)</p>
+                            <p>{(mcResult.var_5 * 100).toFixed(2)}%</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">CVaR (5%)</p>
+                            <p>{(mcResult.cvar_5 * 100).toFixed(2)}%</p>
+                          </div>
+                        </div>
+                        <p className="chart-title">Monte Carlo ending values</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={mcResult.ending_values.map((v, idx) => ({ id: idx, value: v }))}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="id" tick={false} label={{ value: "Simulations", position: "insideBottom", offset: -5 }} />
+                              <YAxis tickFormatter={(v) => `$${formatCurrency(v)}`} label={{ value: "Ending Value", angle: -90, position: "insideLeft" }} />
+                              <Tooltip formatter={(v) => `$${formatCurrency(v)}`} />
+                              <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    )}
+                    {stressResult && (
+                      <>
+                        <p className="chart-title">Stress test outcome ({stressScenario})</p>
+                        <div className="analytics-grid">
+                          <div className="stat-box">
+                            <p className="muted">Peak drawdown</p>
+                            <p>{(stressResult.max_drawdown * 100).toFixed(2)}%</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Recovery time (days)</p>
+                            <p>{stressResult.recovery_time_days}</p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Worst day</p>
+                            <p>{(stressResult.worst_day_return * 100).toFixed(2)}%</p>
+                          </div>
+                        </div>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={220}>
+                            <LineChart
+                              data={stressResult.equity_curve.map((v, idx) => ({
+                                date: stressResult.dates[idx],
+                                equity: v,
+                              }))}
+                            >
+                              <XAxis dataKey="date" label={{ value: "Date", position: "insideBottom", offset: -5 }} />
+                              <YAxis
+                                tickFormatter={(v) => `${((v - 1) * 100).toFixed(1)}%`}
+                                label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
+                              />
+                              <Tooltip formatter={(value) => `${((value - 1) * 100).toFixed(2)}%`} />
+                              <Line dataKey="equity" stroke="#ef4444" dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="card">
+                    <h3>Efficient Frontier & Optimization</h3>
+                    <div className="action-row">
+                      <button
+                        onClick={async () => {
+                          setFrontierLoading(true);
+                          setFrontierError("");
+                          try {
+                            const data = await api.efficientFrontier({
+                              tickers: parseTickers(),
+                              start_date: startDate || null,
+                              end_date: endDate || null,
+                            });
+                            setFrontierResult(data);
+                          } catch (err) {
+                            setFrontierError(err.message || "Frontier failed");
+                          } finally {
+                            setFrontierLoading(false);
+                          }
+                        }}
+                        disabled={frontierLoading}
+                      >
+                        {frontierLoading ? "Optimizing..." : "Show frontier"}
+                      </button>
+                    </div>
+                    {frontierError && <p className="error-text">{frontierError}</p>}
+                    {frontierResult ? (
+                      <>
+                        <div className="stats-grid">
+                          <div className="stat-box">
+                            <p className="muted">Max Sharpe</p>
+                            <p>
+                              {(frontierResult.max_sharpe.return * 100).toFixed(2)}% /
+                              {(frontierResult.max_sharpe.vol * 100).toFixed(2)}%
+                            </p>
+                          </div>
+                          <div className="stat-box">
+                            <p className="muted">Min Vol</p>
+                            <p>
+                              {(frontierResult.min_vol.return * 100).toFixed(2)}% /
+                              {(frontierResult.min_vol.vol * 100).toFixed(2)}%
+                            </p>
+                          </div>
+                        </div>
+                        <p className="chart-title">Efficient frontier</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={260}>
+                            <ScatterChart data={frontierResult.frontier}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis
+                                type="number"
+                                dataKey="vol"
+                                name="Vol"
+                                label={{ value: "Volatility (%)", position: "insideBottom", offset: -5 }}
+                                tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <YAxis
+                                type="number"
+                                dataKey="return"
+                                name="Return"
+                                label={{ value: "Return (%)", angle: -90, position: "insideLeft" }}
+                                tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <Tooltip
+                                formatter={(value, name) =>
+                                  `${(value * 100).toFixed(2)}% ${name}`
+                                }
+                              />
+                              <Scatter data={frontierResult.frontier} fill="#60a5fa" />
+                              <Scatter
+                                data={[frontierResult.max_sharpe]}
+                                fill="#22c55e"
+                                shape="star"
+                                name="Max Sharpe"
+                              />
+                              <Scatter
+                                data={[frontierResult.min_vol]}
+                                fill="#f97316"
+                                shape="triangle"
+                                name="Min Vol"
+                              />
+                            </ScatterChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="muted">Run frontier to visualize optimal portfolios.</p>
+                    )}
+                  </div>
+
+                  <div className="card">
+                    <h3>Custom Strategy Builder</h3>
+                    <p className="muted">
+                      Combine indicators (SMA, EMA, RSI, MACD, Bollinger, ROC, Vol) with rules to toggle exposure.
+                    </p>
+                    <div className="builder-rules">
+                      {builderRules.map((rule, idx) => (
+                        <div key={idx} className="builder-row">
+                          <select
+                            value={rule.left}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              next[idx].left = e.target.value;
+                              setBuilderRules(next);
+                            }}
+                          >
+                            {["sma", "ema", "rsi", "macd", "bollinger", "roc", "vol", "price"].map((opt) => (
+                              <option key={opt} value={opt}>{opt.toUpperCase()}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Window"
+                            value={rule.leftWindow ?? ""}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              next[idx].leftWindow = Number(e.target.value);
+                              setBuilderRules(next);
+                            }}
+                          />
+                          <select
+                            value={rule.operator}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              next[idx].operator = e.target.value;
+                              setBuilderRules(next);
+                            }}
+                          >
+                            <option value=">">{">"}</option>
+                            <option value="<">{"<"}</option>
+                            <option value="cross_over">Cross Over</option>
+                          </select>
+                          <select
+                            value={rule.right}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              next[idx].right = e.target.value;
+                              setBuilderRules(next);
+                            }}
+                          >
+                            <option value="value">Value</option>
+                            {["sma", "ema", "rsi", "macd", "bollinger", "roc", "vol", "price"].map((opt) => (
+                              <option key={opt} value={opt}>{opt.toUpperCase()}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            placeholder="Right window / value"
+                            value={rule.right === "value" ? rule.value ?? "" : rule.rightWindow ?? ""}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              if (rule.right === "value") {
+                                next[idx].value = e.target.value;
+                              } else {
+                                next[idx].rightWindow = Number(e.target.value);
+                              }
+                              setBuilderRules(next);
+                            }}
+                          />
+                          <select
+                            value={rule.action}
+                            onChange={(e) => {
+                              const next = [...builderRules];
+                              next[idx].action = e.target.value;
+                              setBuilderRules(next);
+                            }}
+                          >
+                            <option value="long">Go Long</option>
+                            <option value="flat">Exit</option>
+                          </select>
+                          <button
+                            onClick={() => setBuilderRules(builderRules.filter((_, i) => i !== idx))}
+                            disabled={builderRules.length === 1}
+                          >
+                            Remove
+                          </button>
                         </div>
                       ))}
-                    </div>
-                    <p className="chart-title">Backtest equity curve</p>
-                    <div className="chart-wrapper">
-                      <ResponsiveContainer width="100%" height={260}>
-                        <LineChart
-                          data={backtestResult.equity_curve.dates.map((d, idx) => ({
-                            date: d,
-                            equity: backtestResult.equity_curve.equity[idx],
-                          }))}
-                          margin={{ left: 4, right: 4, top: 10, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis
-                            dataKey="date"
-                            label={{ value: "Date", position: "insideBottom", offset: -5 }}
-                            tick={false}
-                          />
-                          <YAxis
-                            tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
-                            label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip
-                            formatter={(value) =>
-                              `${((value - 1) * 100).toFixed(2)}%`
-                            }
-                            labelFormatter={(label) => label}
-                          />
-                          <Line type="monotone" dataKey="equity" stroke="#22c55e" dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <p className="chart-title">Underwater (drawdown) curve</p>
-                    <div className="chart-wrapper">
-                      <ResponsiveContainer width="100%" height={200}>
-                        <AreaChart
-                          data={backtestResult.equity_curve.equity.map((v, idx) => ({
-                            date: backtestResult.equity_curve.dates[idx],
-                            dd: computeDrawdownSeries(backtestResult.equity_curve.equity)[idx],
-                          }))}
-                        >
-                          <XAxis
-                            dataKey="date"
-                            label={{ value: "Date", position: "insideBottom", offset: -5 }}
-                            tick={false}
-                          />
-                          <YAxis
-                            tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-                            label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
-                            tick={{ fontSize: 12 }}
-                          />
-                          <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
-                          <Area dataKey="dd" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <p className="chart-title">Rolling vol / Sharpe</p>
-                    <div className="chart-wrapper">
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart
-                          data={rollingWithBeta(
-                            backtestResult.returns,
-                            backtestResult.benchmark?.returns,
-                            backtestResult.dates,
-                            60
-                          ).map((row) => ({
-                            idx: row.idx,
-                            vol: row.vol * Math.sqrt(252),
-                            sharpe: row.sharpe,
-                            date: row.date,
-                          }))}
-                        >
-                          <XAxis
-                            dataKey="date"
-                            label={{ value: "Date", position: "insideBottom", offset: -5 }}
-                            tick={false}
-                          />
-                          <YAxis label={{ value: "Value", angle: -90, position: "insideLeft" }} tick={{ fontSize: 12 }} />
-                          <Tooltip
-                            formatter={(v, name) =>
-                              name === "sharpe"
-                                ? v.toFixed(2)
-                                : `${(v * 100).toFixed(2)}%`
-                            }
-                          />
-                          <Line dataKey="vol" stroke="#60a5fa" dot={false} />
-                          <Line dataKey="sharpe" stroke="#f97316" dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Presets & examples */}
-            <div className="card">
-              <h3>Presets & Examples</h3>
-              <div className="preset-row">
-                <div className="preset-actions">
-                  <input
-                    type="text"
-                    placeholder="Preset name"
-                    value={presetName}
-                    onChange={(e) => setPresetName(e.target.value)}
-                  />
-                  <button
-                  onClick={() => {
-                    if (!presetName) return;
-                    const tickers = parseTickers();
-                    const weights = parseWeights();
-                    const newPreset = { name: presetName, tickers, weights };
-                    setPresets([...presets, newPreset]);
-                    api.savePreset(newPreset).catch(() => {});
-                    setPresetName("");
-                  }}
-                >
-                    Save preset
-                  </button>
-                </div>
-                <div className="preset-buttons">
-                  {presets.map((p) => (
-                    <button
-                      key={p.name}
-                      onClick={() => {
-                        setAnalyticsTickers(p.tickers.join(","));
-                        setAnalyticsWeights(p.weights ? p.weights.join(",") : "");
-                      }}
-                    >
-                      Load {p.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="preset-buttons">
-                  {[
-                    { label: "Momentum Portfolio", tickers: "MTUM,QQQ,SPY", weights: "0.5,0.3,0.2" },
-                    { label: "Tech Tilt", tickers: "AAPL,MSFT,NVDA,QQQ", weights: "0.3,0.3,0.2,0.2" },
-                    { label: "Risk Parity", tickers: "SPY,TLT,GLD", weights: "0.4,0.4,0.2" },
-                  ].map((ex) => (
-                    <button
-                      key={ex.label}
-                      onClick={() => {
-                        setAnalyticsTickers(ex.tickers);
-                        setAnalyticsWeights(ex.weights);
-                      }}
-                    >
-                      {ex.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="card analytics-grid">
-              <div className="analytics-form">
-                <h3>Position Sizing</h3>
-                <div className="form-row">
-                  <label>
-                    Ticker
-                    <input
-                      value={positionSizingForm.ticker}
-                      onChange={(e) => setPositionSizingForm({ ...positionSizingForm, ticker: e.target.value })}
-                      placeholder="NVDA"
-                    />
-                  </label>
-                  <label>
-                    Risk per trade (%)
-                    <input
-                      type="number"
-                      value={positionSizingForm.risk_per_trade_pct}
-                      onChange={(e) => setPositionSizingForm({ ...positionSizingForm, risk_per_trade_pct: Number(e.target.value) })}
-                      step="0.1"
-                    />
-                  </label>
-                </div>
-                <div className="form-row">
-                  <label>
-                    Entry price
-                    <input
-                      type="number"
-                      value={positionSizingForm.entry_price}
-                      onChange={(e) => setPositionSizingForm({ ...positionSizingForm, entry_price: Number(e.target.value) })}
-                    />
-                  </label>
-                  <label>
-                    Stop price
-                    <input
-                      type="number"
-                      value={positionSizingForm.stop_price}
-                      onChange={(e) => setPositionSizingForm({ ...positionSizingForm, stop_price: Number(e.target.value) })}
-                    />
-                  </label>
-                </div>
-                <label>
-                  Portfolio value
-                  <input
-                    type="number"
-                    value={positionSizingForm.portfolio_value}
-                    onChange={(e) => setPositionSizingForm({ ...positionSizingForm, portfolio_value: Number(e.target.value) })}
-                  />
-                </label>
-                <button
-                  onClick={async () => {
-                    setPositionSizingLoading(true);
-                    setPositionSizingError("");
-                    try {
-                      const data = await api.positionSizing(positionSizingForm);
-                      setPositionSizingResult(data);
-                    } catch (err) {
-                      setPositionSizingError(err.message || "Position sizing failed");
-                    } finally {
-                      setPositionSizingLoading(false);
-                    }
-                  }}
-                  disabled={positionSizingLoading}
-                >
-                  {positionSizingLoading ? "Calculating..." : "Calculate size"}
-                </button>
-                {positionSizingError && <p className="error-text">{positionSizingError}</p>}
-                {positionSizingResult && (
-                  <div className="stats-grid">
-                    <div className="stat-box">
-                      <p className="muted">Shares</p>
-                      <p>{positionSizingResult.shares}</p>
-                    </div>
-                    <div className="stat-box">
-                      <p className="muted">Position value</p>
-                      <p>${formatCurrency(positionSizingResult.position_value)}</p>
-                    </div>
-                    <div className="stat-box">
-                      <p className="muted">Risk ($)</p>
-                      <p>${formatCurrency(positionSizingResult.risk_amount)}</p>
-                    </div>
-                    <div className="stat-box">
-                      <p className="muted">Risk % of portfolio</p>
-                      <p>{positionSizingResult.risk_pct_of_portfolio.toFixed(2)}%</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="analytics-form">
-                <h3>Rebalance Suggestions</h3>
-                <label>
-                  Tickers
-                  <input
-                    value={rebalanceForm.tickers}
-                    onChange={(e) => setRebalanceForm({ ...rebalanceForm, tickers: e.target.value })}
-                    placeholder="AAPL,MSFT,SPY"
-                  />
-                </label>
-                <label>
-                  Current weights (comma-separated)
-                  <input
-                    value={rebalanceForm.current_weights}
-                    onChange={(e) => setRebalanceForm({ ...rebalanceForm, current_weights: e.target.value })}
-                    placeholder="0.5,0.3,0.2"
-                  />
-                </label>
-                <label>
-                  Target weights (comma-separated)
-                  <input
-                    value={rebalanceForm.target_weights}
-                    onChange={(e) => setRebalanceForm({ ...rebalanceForm, target_weights: e.target.value })}
-                    placeholder="0.4,0.3,0.3"
-                  />
-                </label>
-                <label>
-                  Prices (comma-separated)
-                  <input
-                    value={rebalanceForm.prices}
-                    onChange={(e) => setRebalanceForm({ ...rebalanceForm, prices: e.target.value })}
-                    placeholder="200,400,500"
-                  />
-                </label>
-                <label>
-                  Portfolio value
-                  <input
-                    type="number"
-                    value={rebalanceForm.portfolio_value}
-                    onChange={(e) => setRebalanceForm({ ...rebalanceForm, portfolio_value: Number(e.target.value) })}
-                  />
-                </label>
-                <button
-                  onClick={async () => {
-                    setRebalanceLoading(true);
-                    setRebalanceError("");
-                    try {
-                      const payload = {
-                        tickers: rebalanceForm.tickers.split(",").map((t) => t.trim()).filter(Boolean),
-                        current_weights: rebalanceForm.current_weights.split(",").map((v) => Number(v.trim())),
-                        target_weights: rebalanceForm.target_weights.split(",").map((v) => Number(v.trim())),
-                        prices: rebalanceForm.prices.split(",").map((v) => Number(v.trim())),
-                        portfolio_value: Number(rebalanceForm.portfolio_value),
-                      };
-                      const data = await api.rebalance(payload);
-                      setRebalanceResult(data);
-                    } catch (err) {
-                      setRebalanceError(err.message || "Rebalance failed");
-                    } finally {
-                      setRebalanceLoading(false);
-                    }
-                  }}
-                  disabled={rebalanceLoading}
-                >
-                  {rebalanceLoading ? "Computing..." : "Get trades"}
-                </button>
-                {rebalanceError && <p className="error-text">{rebalanceError}</p>}
-                {rebalanceResult && (
-                  <>
-                    <p className="muted">Estimated turnover: {rebalanceResult.estimated_turnover_pct}%</p>
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Ticker</th>
-                            <th>Action</th>
-                            <th>Shares</th>
-                            <th>Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rebalanceResult.trades.map((t) => (
-                            <tr key={t.ticker + t.action}>
-                              <td>{t.ticker}</td>
-                              <td style={{ textTransform: "capitalize" }}>{t.action}</td>
-                              <td>{t.shares}</td>
-                              <td>${formatCurrency(t.value)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Advanced analytics */}
-            <div className="card">
-              <h3>Factor Exposures & Risk</h3>
-              <div className="action-row">
-                <button
-                  onClick={async () => {
-                    setFactorLoading(true);
-                    setFactorError("");
-                    try {
-                      const data = await api.factorExposures({
-                        tickers: parseTickers(),
-                        weights: parseWeights(),
-                        start_date: startDate || null,
-                        end_date: endDate || null,
-                      });
-                      setFactorResult(data);
-                    } catch (err) {
-                      setFactorError(err.message || "Factor request failed");
-                    } finally {
-                      setFactorLoading(false);
-                    }
-                  }}
-                  disabled={factorLoading}
-                >
-                  {factorLoading ? "Loading..." : "Run factor regression"}
-                </button>
-                <button
-                  onClick={async () => {
-                    setRiskLoading(true);
-                    setRiskError("");
-                    try {
-                      const data = await api.riskBreakdown({
-                        tickers: parseTickers(),
-                        weights: parseWeights(),
-                        start_date: startDate || null,
-                        end_date: endDate || null,
-                      });
-                      setRiskResult(data);
-                    } catch (err) {
-                      setRiskError(err.message || "Risk breakdown failed");
-                    } finally {
-                      setRiskLoading(false);
-                    }
-                  }}
-                  disabled={riskLoading}
-                >
-                  {riskLoading ? "Loading..." : "Risk breakdown"}
-                </button>
-                <button
-                  onClick={async () => {
-                    setBenchmarkLoading(true);
-                    setBenchmarkError("");
-                    try {
-                      const data = await api.benchmark({
-                        tickers: parseTickers(),
-                        weights: parseWeights(),
-                        benchmark,
-                        start_date: startDate || null,
-                        end_date: endDate || null,
-                      });
-                      setBenchmarkResult(data);
-                    } catch (err) {
-                      setBenchmarkError(err.message || "Benchmark failed");
-                    } finally {
-                      setBenchmarkLoading(false);
-                    }
-                  }}
-                  disabled={benchmarkLoading}
-                >
-                  {benchmarkLoading ? "Loading..." : "Compare to benchmark"}
-                </button>
-                <input
-                  type="text"
-                  value={benchmark}
-                  onChange={(e) => setBenchmark(e.target.value.toUpperCase())}
-                  placeholder="Benchmark (SPY)"
-                  style={{ maxWidth: 120 }}
-                />
-              </div>
-              {factorError && <p className="error-text">{factorError}</p>}
-              {riskError && <p className="error-text">{riskError}</p>}
-              {benchmarkError && <p className="error-text">{benchmarkError}</p>}
-              <div className="analytics-grid">
-                <div className="stat-box">
-                  <p className="muted">Alpha / Beta</p>
-                  <p>
-                    {benchmarkResult
-                      ? `α ${(benchmarkResult.alpha * 100).toFixed(2)}% · β ${benchmarkResult.beta.toFixed(2)}`
-                      : "Run benchmark"}
-                  </p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Tracking Error</p>
-                  <p>
-                    {benchmarkResult
-                      ? `${benchmarkResult.tracking_error.toFixed(3)}`
-                      : "—"}
-                  </p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Factor R²</p>
-                  <p>{factorResult ? factorResult.r2.toFixed(2) : "—"}</p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Residual Vol</p>
-                  <p>
-                    {factorResult
-                      ? `${(factorResult.residual_vol * 100).toFixed(2)}%`
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-              {factorResult && (
-                <>
-                  <p className="chart-title">Factor loadings</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <BarChart data={factorResult.loadings}>
-                        <XAxis
-                          dataKey="factor"
-                          label={{ value: "Factor", position: "insideBottom", offset: -5 }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis label={{ value: "Beta", angle: -90, position: "insideLeft" }} tick={{ fontSize: 12 }} />
-                        <Tooltip formatter={(v) => v.toFixed(2)} />
-                        <Bar dataKey="beta" fill="#60a5fa" radius={[8, 8, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              )}
-              {riskResult && (
-                <>
-                  <h4>Variance Contribution</h4>
-                  <p className="chart-title">Contribution to variance</p>
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={riskResult.contribution}>
-                      <XAxis
-                        dataKey="ticker"
-                        label={{ value: "Ticker", position: "insideBottom", offset: -5 }}
-                        tick={{ fontSize: 12 }}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis
-                        tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
-                        label={{ value: "Variance (%)", angle: -90, position: "insideLeft" }}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
-                      <Bar dataKey="pct_variance" fill="#22c55e" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                  <h4>Correlation Heatmap</h4>
-                  <div className="heatmap">
-                    {Object.entries(riskResult.correlation || {}).map(([rowKey, row]) => (
-                      <div key={rowKey} className="heatmap-row">
-                        {Object.entries(row).map(([col, val]) => {
-                          const v = Number(val);
-                          const color = `rgba(96, 165, 250, ${Math.abs(v)})`;
-                          return (
-                            <div
-                              key={col}
-                              className="heatmap-cell"
-                              style={{ background: color }}
-                              title={`${rowKey}-${col}: ${v.toFixed(2)}`}
-                            >
-                              {v.toFixed(2)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="card">
-              <h3>Monte Carlo & Stress Tests</h3>
-              <div className="action-row">
-                <button
-                  onClick={async () => {
-                    setMcLoading(true);
-                    setMcError("");
-                    try {
-                      const data = await api.monteCarlo({
-                        tickers: parseTickers(),
-                        weights: parseWeights(),
-                        horizon_days: 252,
-                        simulations: 5000,
-                        start_date: startDate || null,
-                        end_date: endDate || null,
-                      });
-                      setMcResult(data);
-                    } catch (err) {
-                      setMcError(err.message || "Simulation failed");
-                    } finally {
-                      setMcLoading(false);
-                    }
-                  }}
-                  disabled={mcLoading}
-                >
-                  {mcLoading ? "Simulating..." : "Run Monte Carlo"}
-                </button>
-                <select
-                  value={stressScenario}
-                  onChange={(e) => setStressScenario(e.target.value)}
-                >
-                  <option value="covid">COVID Crash (2020)</option>
-                  <option value="gfc">2008 Financial Crisis</option>
-                  <option value="dotcom">Dot Com Bust</option>
-                </select>
-                <button
-                  onClick={async () => {
-                    setStressLoading(true);
-                    setStressError("");
-                    try {
-                      const data = await api.stressTest({
-                        tickers: parseTickers(),
-                        weights: parseWeights(),
-                        scenario: stressScenario,
-                      });
-                      setStressResult(data);
-                    } catch (err) {
-                      setStressError(err.message || "Stress test failed");
-                    } finally {
-                      setStressLoading(false);
-                    }
-                  }}
-                  disabled={stressLoading}
-                >
-                  {stressLoading ? "Running..." : "Run stress test"}
-                </button>
-              </div>
-              {mcError && <p className="error-text">{mcError}</p>}
-              {stressError && <p className="error-text">{stressError}</p>}
-
-              <div className="analytics-grid">
-                <div className="stat-box">
-                  <p className="muted">Prob. Losing 20%</p>
-                  <p>
-                    {mcResult ? `${(mcResult.prob_loss_20 * 100).toFixed(1)}%` : "—"}
-                  </p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Prob. &gt;= +20%</p>
-                  <p>
-                    {mcResult
-                      ? `${(mcResult.prob_target_20pct * 100).toFixed(1)}%`
-                      : "—"}
-                  </p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Median Ending Value</p>
-                  <p>{mcResult ? mcResult.median.toFixed(2) : "—"}</p>
-                </div>
-                <div className="stat-box">
-                  <p className="muted">Stress Max DD</p>
-                  <p>
-                    {stressResult
-                      ? `${(stressResult.metrics.max_drawdown * 100).toFixed(1)}%`
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-              {mcResult && (
-                <>
-                  <p className="chart-title">Monte Carlo ending values</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <AreaChart data={mcResult.final_values.map((v, idx) => ({ idx, value: v }))}>
-                        <XAxis
-                          dataKey="idx"
-                          label={{ value: "Simulation Path", position: "insideBottom", offset: -5 }}
-                          tick={false}
-                        />
-                        <YAxis
-                          tickFormatter={(v) => v.toFixed(2)}
-                          label={{ value: "Ending Value (x)", angle: -90, position: "insideLeft" }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip formatter={(v) => v.toFixed(3)} />
-                        <Area dataKey="value" stroke="#a855f7" fill="#a855f7" fillOpacity={0.25} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              )}
-              {stressResult && (
-                <>
-                  <p className="chart-title">Stress test equity curve</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart
-                        data={stressResult.equity_curve.dates.map((d, idx) => ({
-                          date: d,
-                          equity: stressResult.equity_curve.equity[idx],
-                        }))}
-                      >
-                        <XAxis
-                          dataKey="date"
-                          label={{ value: "Date", position: "insideBottom", offset: -5 }}
-                          tick={false}
-                        />
-                        <YAxis
-                          tickFormatter={(v) => `${((v - 1) * 100).toFixed(1)}%`}
-                          label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip
-                          formatter={(value) => `${((value - 1) * 100).toFixed(2)}%`}
-                          labelFormatter={(label) => label}
-                        />
-                        <Line type="monotone" dataKey="equity" stroke="#f97316" dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="card">
-              <h3>Efficient Frontier & Optimization</h3>
-              <div className="action-row">
-                <button
-                  onClick={async () => {
-                    setFrontierLoading(true);
-                    setFrontierError("");
-                    try {
-                      const data = await api.efficientFrontier({
-                        tickers: parseTickers(),
-                        start_date: startDate || null,
-                        end_date: endDate || null,
-                      });
-                      setFrontierResult(data);
-                    } catch (err) {
-                      setFrontierError(err.message || "Frontier failed");
-                    } finally {
-                      setFrontierLoading(false);
-                    }
-                  }}
-                  disabled={frontierLoading}
-                >
-                  {frontierLoading ? "Optimizing..." : "Show frontier"}
-                </button>
-              </div>
-              {frontierError && <p className="error-text">{frontierError}</p>}
-              {frontierResult ? (
-                <>
-                  <div className="stats-grid">
-                    <div className="stat-box">
-                      <p className="muted">Max Sharpe</p>
-                      <p>
-                        {(frontierResult.max_sharpe.return * 100).toFixed(2)}% /
-                        {(frontierResult.max_sharpe.vol * 100).toFixed(2)}%
-                      </p>
-                    </div>
-                    <div className="stat-box">
-                      <p className="muted">Min Vol</p>
-                      <p>
-                        {(frontierResult.min_vol.return * 100).toFixed(2)}% /
-                        {(frontierResult.min_vol.vol * 100).toFixed(2)}%
-                      </p>
-                    </div>
-                  </div>
-                  <p className="chart-title">Efficient frontier</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <ScatterChart data={frontierResult.frontier}>
-                        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                        <XAxis
-                          type="number"
-                          dataKey="vol"
-                          name="Vol"
-                          label={{ value: "Volatility (%)", position: "insideBottom", offset: -5 }}
-                          tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis
-                          type="number"
-                          dataKey="return"
-                          name="Return"
-                          label={{ value: "Return (%)", angle: -90, position: "insideLeft" }}
-                          tickFormatter={(v) => `${(v * 100).toFixed(1)}%`}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip
-                          formatter={(value, name) =>
-                            `${(value * 100).toFixed(2)}% ${name}`
-                          }
-                        />
-                        <Scatter data={frontierResult.frontier} fill="#60a5fa" />
-                        <Scatter
-                          data={[frontierResult.max_sharpe]}
-                          fill="#22c55e"
-                          shape="star"
-                          name="Max Sharpe"
-                        />
-                        <Scatter
-                          data={[frontierResult.min_vol]}
-                          fill="#f97316"
-                          shape="triangle"
-                          name="Min Vol"
-                        />
-                      </ScatterChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              ) : (
-                <p className="muted">Run frontier to visualize optimal portfolios.</p>
-              )}
-            </div>
-
-            <div className="card">
-              <h3>Custom Strategy Builder</h3>
-              <p className="muted">
-                Combine indicators (SMA, EMA, RSI, MACD, Bollinger, ROC, Vol) with rules to toggle exposure.
-              </p>
-              <div className="builder-rules">
-                {builderRules.map((rule, idx) => (
-                  <div key={idx} className="builder-row">
-                    <select
-                      value={rule.left}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        next[idx].left = e.target.value;
-                        setBuilderRules(next);
-                      }}
-                    >
-                      {["sma", "ema", "rsi", "macd", "bollinger", "roc", "vol", "price"].map((opt) => (
-                        <option key={opt} value={opt}>{opt.toUpperCase()}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="Window"
-                      value={rule.leftWindow ?? ""}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        next[idx].leftWindow = Number(e.target.value);
-                        setBuilderRules(next);
-                      }}
-                    />
-                    <select
-                      value={rule.operator}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        next[idx].operator = e.target.value;
-                        setBuilderRules(next);
-                      }}
-                    >
-                      <option value=">">{">"}</option>
-                      <option value="<">{"<"}</option>
-                      <option value="cross_over">Cross Over</option>
-                    </select>
-                    <select
-                      value={rule.right}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        next[idx].right = e.target.value;
-                        setBuilderRules(next);
-                      }}
-                    >
-                      <option value="value">Value</option>
-                      {["sma", "ema", "rsi", "macd", "bollinger", "roc", "vol", "price"].map((opt) => (
-                        <option key={opt} value={opt}>{opt.toUpperCase()}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      placeholder="Right window / value"
-                      value={rule.right === "value" ? rule.value ?? "" : rule.rightWindow ?? ""}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        if (rule.right === "value") {
-                          next[idx].value = e.target.value;
-                        } else {
-                          next[idx].rightWindow = Number(e.target.value);
+                      <button
+                        onClick={() =>
+                          setBuilderRules([
+                            ...builderRules,
+                            { left: "sma", leftWindow: 10, operator: ">", right: "value", value: 0, action: "long" },
+                          ])
                         }
-                        setBuilderRules(next);
-                      }}
-                    />
-                    <select
-                      value={rule.action}
-                      onChange={(e) => {
-                        const next = [...builderRules];
-                        next[idx].action = e.target.value;
-                        setBuilderRules(next);
-                      }}
-                    >
-                      <option value="long">Go Long</option>
-                      <option value="flat">Exit</option>
-                    </select>
-                    <button
-                      onClick={() => setBuilderRules(builderRules.filter((_, i) => i !== idx))}
-                      disabled={builderRules.length === 1}
-                    >
-                      Remove
+                      >
+                        Add rule
+                      </button>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Stop loss (decimal, e.g. 0.1)
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={stopLoss}
+                          onChange={(e) => setStopLoss(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Take profit (decimal, e.g. 0.2)
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={takeProfit}
+                          onChange={(e) => setTakeProfit(e.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <button onClick={runStrategyBuilder} disabled={builderLoading}>
+                      {builderLoading ? "Running..." : "Run custom strategy"}
                     </button>
+                    {builderError && <p className="error-text">{builderError}</p>}
+                    {builderResult ? (
+                      <>
+                        <div className="stats-grid">
+                          {[
+                            { label: "Cumulative Return", key: "cumulative_return" },
+                            { label: "Annualized Return", key: "annualized_return" },
+                            { label: "Annualized Volatility", key: "annualized_volatility" },
+                            { label: "Sharpe Ratio", key: "sharpe_ratio" },
+                            { label: "Max Drawdown", key: "max_drawdown" },
+                          ].map((row) => (
+                            <div key={row.key} className="stat-box">
+                              <p className="muted">{row.label}</p>
+                              <p>
+                                {row.key === "sharpe_ratio"
+                                  ? builderResult.metrics[row.key].toFixed(2)
+                                  : `${(builderResult.metrics[row.key] * 100).toFixed(2)}%`}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="chart-title">Strategy equity curve</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={240}>
+                            <LineChart
+                              data={builderResult.equity_curve.dates.map((d, idx) => ({
+                                date: d,
+                                equity: builderResult.equity_curve.equity[idx],
+                              }))}
+                            >
+                              <XAxis dataKey="date" label={{ value: "Date", position: "insideBottom", offset: -5 }} />
+                              <YAxis
+                                tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
+                                label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
+                              />
+                              <Tooltip formatter={(value) => `${((value - 1) * 100).toFixed(2)}%`} />
+                              <Line type="monotone" dataKey="equity" stroke="#22c55e" dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <p className="chart-title">Underwater (drawdown)</p>
+                        <div className="chart-wrapper">
+                          <ResponsiveContainer width="100%" height={200}>
+                            <AreaChart
+                              data={builderResult.equity_curve.equity.map((v, idx) => ({
+                                date: builderResult.equity_curve.dates[idx],
+                                dd: computeDrawdownSeries(builderResult.equity_curve.equity)[idx],
+                              }))}
+                            >
+                              <XAxis dataKey="date" label={{ value: "Date", position: "insideBottom", offset: -5 }} />
+                              <YAxis
+                                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                                label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
+                              />
+                              <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
+                              <Area dataKey="dd" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="muted">Define rules and run to see results.</p>
+                    )}
                   </div>
-                ))}
-                <button
-                  onClick={() =>
-                    setBuilderRules([
-                      ...builderRules,
-                      { left: "sma", leftWindow: 10, operator: ">", right: "value", value: 0, action: "long" },
-                    ])
-                  }
-                >
-                  Add rule
-                </button>
+                </div>
               </div>
-              <div className="form-row">
-                <label>
-                  Stop loss (decimal, e.g. 0.1)
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Take profit (decimal, e.g. 0.2)
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={takeProfit}
-                    onChange={(e) => setTakeProfit(e.target.value)}
-                  />
-                </label>
-              </div>
-              <button onClick={runStrategyBuilder} disabled={builderLoading}>
-                {builderLoading ? "Running..." : "Run custom strategy"}
-              </button>
-              {builderError && <p className="error-text">{builderError}</p>}
-              {builderResult ? (
-                <>
-                  <div className="stats-grid">
-                    {[
-                      { label: "Cumulative Return", key: "cumulative_return" },
-                      { label: "Annualized Return", key: "annualized_return" },
-                      { label: "Annualized Volatility", key: "annualized_volatility" },
-                      { label: "Sharpe Ratio", key: "sharpe_ratio" },
-                      { label: "Max Drawdown", key: "max_drawdown" },
-                    ].map((row) => (
-                      <div key={row.key} className="stat-box">
-                        <p className="muted">{row.label}</p>
-                        <p>
-                          {row.key === "sharpe_ratio"
-                            ? builderResult.metrics[row.key].toFixed(2)
-                            : `${(builderResult.metrics[row.key] * 100).toFixed(2)}%`}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="chart-title">Strategy equity curve</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart
-                        data={builderResult.equity_curve.dates.map((d, idx) => ({
-                          date: d,
-                          equity: builderResult.equity_curve.equity[idx],
-                        }))}
-                      >
-                        <XAxis dataKey="date" label={{ value: "Date", position: "insideBottom", offset: -5 }} />
-                        <YAxis
-                          tickFormatter={(v) => `${(v * 100 - 100).toFixed(1)}%`}
-                          label={{ value: "Growth (%)", angle: -90, position: "insideLeft" }}
-                        />
-                        <Tooltip formatter={(value) => `${((value - 1) * 100).toFixed(2)}%`} />
-                        <Line type="monotone" dataKey="equity" stroke="#22c55e" dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <p className="chart-title">Underwater (drawdown)</p>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart
-                        data={builderResult.equity_curve.equity.map((v, idx) => ({
-                          date: builderResult.equity_curve.dates[idx],
-                          dd: computeDrawdownSeries(builderResult.equity_curve.equity)[idx],
-                        }))}
-                      >
-                        <XAxis dataKey="date" label={{ value: "Date", position: "insideBottom", offset: -5 }} />
-                        <YAxis
-                          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-                          label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
-                        />
-                        <Tooltip formatter={(v) => `${(v * 100).toFixed(2)}%`} />
-                        <Area dataKey="dd" stroke="#ef4444" fill="#ef4444" fillOpacity={0.2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              ) : (
-                <p className="muted">Define rules and run to see results.</p>
-              )}
             </div>
           </section>
         )}
