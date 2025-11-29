@@ -1,58 +1,148 @@
-# Portfolio Quant App
+Portfolio Quant App
 
-Thin React client over a modular FastAPI quant engine. Run locally with Python/Node, or via Docker Compose.
+A modern, feature-based React + FastAPI application for portfolio analytics, risk metrics, backtesting, and optimization.
 
-## Prerequisites
-- Python 3.11+ (for backend)
-- Node 18+ (for frontend)
-- Docker & Docker Compose (optional, for containers)
+The app consists of:
 
-## Quick start (local, two terminals)
-1) Backend
-```bash
+Backend: Modular FastAPI quant engine (analytics, risk, backtests, optimizers, rebalance).
+
+Frontend: Vite + React client with clean feature architecture and routed pages (Overview / Positions / Analytics).
+
+Deployment: Local dev (Python/Node), Docker Compose, or cloud hosting (Render/Vercel-ready).
+
+Features
+Frontend (client/)
+
+Modern React/Vite architecture with feature folders:
+
+Overview — portfolio snapshot, equity + PnL, summary metrics
+
+Positions — holdings table, exposures, weights
+
+Analytics — performance, Sharpe/vol, drawdowns, backtests, stress tests
+
+Centralized API client (services/apiClient)
+
+Shared domain types (types/portfolio.ts)
+
+Pure quant math extracted into lib/analyticsCalculations
+
+Demo mode and CSV upload support
+
+Responsive design and charting with Recharts
+
+Backend (backend/app/)
+
+Modular FastAPI structure:
+
+api/v1 — cleanly separated routes (overview, positions, analytics)
+
+services/ — portfolio & analytics business logic
+
+schemas/ — Pydantic models for typed responses
+
+core/ — config, exceptions, dependencies
+
+Analytics engine:
+
+Returns, volatility, Sharpe, Sortino
+
+Max drawdown & drawdown series
+
+Position-level metrics & exposures
+
+Backtesting + optimizers (if enabled)
+
+Optional caching of market data for faster runs
+
+Installation & Quick Start
+Local Development
+1. Backend (FastAPI)
 cd backend
-python -m venv .venv && source .venv/bin/activate  # or use your env manager
-pip install --upgrade pip
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-2) Frontend
-```bash
+
+Backend runs at:
+http://localhost:8000
+
+Docs:
+http://localhost:8000/docs
+
+2. Frontend (React/Vite)
 cd client
 npm install
-# optional: echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
 npm run dev -- --host --port 5173
-```
 
-Visit http://localhost:5173 (frontend) and http://localhost:8000/docs (backend).
 
-## Docker Compose
-```bash
+Frontend runs at:
+http://localhost:5173
+
+ Docker Compose (one command)
+
+To run the full stack using Docker:
+
 docker compose up --build
-```
-- Backend: http://localhost:8000
-- Frontend: http://localhost:3000
-- Compose passes `VITE_API_BASE_URL=http://backend:8000` to the frontend build.
 
-## Key environment variables
-- `FRONTEND_ORIGINS` (backend): comma-separated list of allowed CORS origins. Defaults to localhost dev ports.
-- `VITE_API_BASE_URL` (frontend): API base URL; defaults to same-origin. In dev, set to `http://localhost:8000`.
-- `DATA_CACHE_DIR`, `RUNS_DIR` (backend): optional paths for cached prices and run logs; default under `backend/app/`.
 
-## Running tests
-Backend tests (fast, synthetic data):
-```bash
+Services exposed:
+
+Service	URL
+Backend	http://localhost:8000
+
+Frontend	http://localhost:3000
+
+VITE_API_BASE_URL is automatically wired to the backend container.
+
+Environment Variables
+Backend
+Variable	Description
+FRONTEND_ORIGINS	Comma-separated allowed CORS origins
+DATA_CACHE_DIR	Directory for price cache (default: backend/app/data_cache)
+RUNS_DIR	Directory for backtest logs (default: backend/app/runs)
+Frontend
+Variable	Description
+VITE_API_BASE_URL	URL of FastAPI backend (default: same origin)
+
+Testing
+Backend Tests
 cd backend
-python -m pytest backend/tests backend/app/tests
-```
+pytest
 
-## Project layout
-- `backend/app/` — FastAPI app (analytics, backtests, optimizers, rebalance, dashboard), data caching, config, infra.
-- `backend/tests/`, `backend/app/tests/` — pytest suites (metrics, backtests, optimizers, rebalance).
-- `client/` — React/Vite UI; API calls in `src/api.ts`; main UI in `src/App.jsx`.
-- `docker-compose.yml` — builds backend + frontend; frontend served via nginx.
 
-## Common issues
-- Docker build errors about disk/overlay: free space with `docker system prune -af` (removes unused images/containers) and retry `docker compose build --no-cache`.
-- CORS: set `FRONTEND_ORIGINS` to include your frontend origin(s) if not using defaults.
+Tests include:
+
+Unit tests (analytics math, services)
+
+Integration tests (FastAPI endpoints, expected response shapes)
+
+Frontend Tests
+
+(when enabled)
+Uses Vitest + React Testing Library.
+
+Project Structure
+backend/
+  app/
+    api/v1/             # routes (overview, positions, analytics)
+    services/           # business logic (analytics, portfolio, backtests)
+    schemas/            # pydantic models
+    core/               # settings, exceptions, dependencies
+    data_cache/         # price & analytics caching
+    runs/               # backtest logs
+  tests/                # unit + integration tests
+
+client/
+  src/
+    app/                # AppShell, routing
+    features/           # overview/positions/analytics pages
+    services/           # apiClient + portfolioApi
+    types/              # shared TS domain types
+    lib/                # pure quant calculations
+    components/         # shared UI components
+    hooks/              # shared hooks
+
+ 

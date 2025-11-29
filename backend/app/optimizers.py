@@ -100,30 +100,61 @@ def min_variance_weights(cov: pd.DataFrame, cap: float = 0.35) -> np.ndarray:
     return w / w.sum()
 
 
-def black_litterman(prior_returns: pd.Series, cov: pd.DataFrame, views: Optional[Dict[str, float]] = None, tau: float = 0.025) -> pd.Series:
-    """
-    Simplified Black-Litterman: blend prior mean with investor views (absolute views only).
-    views: dict of ticker -> expected excess return.
-    """
+def black_litterman(prior_returns: pd.Series, cov: pd.DataFrame, views: Optional[Dict[str, float]] = None, view_uncertainties: Optional[Dict[str, float]] = None, tau: float = 0.025,) -> pd.Series:
+    # Input validation
+    if not prior_returns.index.equals(cov.index):
+        raise ValueError("prior_returns and cov indices must match")
+    if not cov.index.equals(cov.columns):
+        raise ValueError("Covariance matrix must be square with matching indices")
+    
+    # Check positive semi-definite
+    eigvals = np.linalg.eigvalsh(cov.values)
+    if np.any(eigvals < -1e-8):
+        raise ValueError("Covariance matrix must be positive semi-definite")
+    
+    # No views: return prior
     if not views:
-        return prior_returns
+        return prior_returns.copy()
+    
+    # Validate views against available assets
     assets = prior_returns.index.tolist()
-    P = np.zeros((len(views), len(assets)))
-    q = []
-    for i, (ticker, view) in enumerate(views.items()):
-        if ticker not in assets:
-            continue
+    invalid_tickers = [t for t in views.keys() if t not in assets]
+    if invalid_tickers:
+        raise ValueError(f"Views contain invalid tickers not in portfolio: {invalid_tickers}")
+    
+    # Build pick matrix P and view vector q
+    n_views = len(views)
+    n_assets = len(assets)
+    P = np.zeros((n_views, n_assets))
+    q = np.zeros(n_views)
+    
+    for i, (ticker, view_return) in enumerate(views.items()):
         idx = assets.index(ticker)
-        P[i, idx] = 1
-        q.append(view)
-    if not q:
-        return prior_returns
-    q = np.array(q)
+        P[i, idx] = 1.0
+        q[i] = view_return
+    
+    # Build view uncertainty matrix Ω
+    if view_uncertainties is None:
+        omega = np.diag(np.full(n_views, 0.05))
+    else:
+        uncertainties = [view_uncertainties.get(ticker, 0.05) for ticker in views.keys()]
+        omega = np.diag(uncertainties)
+    
+    # Black-Litterman formula (numerically stable version)
     tau_cov = tau * cov.values
-    omega = np.diag(np.full(len(q), 0.05))  # view uncertainty
-    middle = np.linalg.inv(P @ tau_cov @ P.T + omega)
-    posterior = prior_returns.values + tau_cov @ P.T @ middle @ (q - P @ prior_returns.values)
-    return pd.Series(posterior, index=assets)
+    
+    # Solve: (P @ tau_cov @ P.T + Ω) @ x = (q - P @ prior)
+    # Then: posterior = prior + tau_cov @ P.T @ x
+    try:
+        rhs = q - P @ prior_returns.values
+        middle_term = P @ tau_cov @ P.T + omega
+        x = np.linalg.solve(middle_term, rhs)
+        adjustment = tau_cov @ P.T @ x
+        posterior = prior_returns.values + adjustment
+    except np.linalg.LinAlgError as e:
+        raise ValueError(f"Failed to compute posterior returns: {e}") from e
+    
+    return pd.Series(posterior, index=prior_returns.index, name="posterior_returns")
 
 
 def optimizer_summary(rets: pd.DataFrame, cap: float = 0.35) -> Dict[str, Any]:

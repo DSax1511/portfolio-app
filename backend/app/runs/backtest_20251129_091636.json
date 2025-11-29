@@ -1,0 +1,31 @@
+{
+  "id": "backtest_20251129_091636",
+  "kind": "backtest",
+  "timestamp": "20251129_091636",
+  "params": {
+    "strategy": "sma_crossover",
+    "fast_window": 20,
+    "slow_window": 50,
+    "rebalance_frequency": "quarterly",
+    "transaction_cost_bps": 0.0
+  },
+  "stats": {
+    "cumulative_return": 0.007794288697091645,
+    "annualized_return": 0.03314659773660944,
+    "annualized_volatility": 0.038267506114643184,
+    "sharpe_ratio": 0.8661812880438997,
+    "max_drawdown": -0.009067259456839727
+  },
+  "equity": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ]
+}

@@ -1,14 +1,49 @@
-const envBase = import.meta.env.VITE_API_BASE_URL;
-const fallbackBase = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
-const baseUrl = (envBase || fallbackBase).replace(/\/$/, "");
+const inferBaseUrl = () => {
+  const envBase = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (envBase) return envBase;
+  if (typeof window === "undefined") return "http://127.0.0.1:8000";
+  const { origin, hostname, port, protocol } = window.location;
+  const devPorts = ["5173", "4173", "3000"];
+  if (port && devPorts.includes(port)) {
+    return `${protocol}//${hostname}:8000`;
+  }
+  // default: same-origin (useful when frontend is reverse-proxied with the API)
+  return origin;
+};
+
+const baseUrl = inferBaseUrl().replace(/\/$/, "");
+
+const normalizeError = async (res: Response) => {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const data = await res.json();
+      // FastAPI errors usually return {"detail": "..."}
+      if (data?.detail) return `${res.status} ${res.statusText}: ${data.detail}`;
+      return `${res.status} ${res.statusText}: ${JSON.stringify(data)}`;
+    } catch {
+      /* fall through */
+    }
+  }
+  const text = await res.text();
+  return text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`;
+};
 
 const request = async (path: string, options: RequestInit = {}) => {
-  const res = await fetch(`${baseUrl}${path}`, options);
-  if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(msg || `Request failed: ${res.status}`);
+  try {
+    const res = await fetch(`${baseUrl}${path}`, options);
+    if (!res.ok) {
+      const msg = await normalizeError(res);
+      throw new Error(msg);
+    }
+    return res.json();
+  } catch (err: any) {
+    // Provide a clearer network/CORS error to the UI.
+    if (err?.name === "TypeError" && err?.message?.toLowerCase().includes("fetch")) {
+      throw new Error(`Network error. Check backend (${baseUrl}), CORS, or if the server is running.`);
+    }
+    throw err;
   }
-  return res.json();
 };
 
 export const api = {

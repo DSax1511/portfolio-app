@@ -4,6 +4,7 @@ import csv
 import datetime as dt
 import io
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -72,6 +73,10 @@ DEFAULT_ORIGINS = ",".join(
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://0.0.0.0:5173",
+        "http://0.0.0.0:3000",
     ]
 )
 ALLOWED_ORIGINS = [
@@ -87,6 +92,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logger = logging.getLogger("app")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 @app.get("/api/health")
@@ -279,6 +288,7 @@ def backtest_from_config(payload: Dict[str, Any]) -> BacktestResponse:
 
 @app.post("/api/factor-exposures")
 def factor_exposures(request: FactorExposureRequest) -> Dict[str, Any]:
+    logger.info("factor_exposures: tickers=%s start=%s end=%s", request.tickers, request.start_date, request.end_date)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
     portfolio_returns = analytics.compute_portfolio_returns(prices, weights)
@@ -288,6 +298,7 @@ def factor_exposures(request: FactorExposureRequest) -> Dict[str, Any]:
 
 @app.post("/api/risk-breakdown")
 def risk_breakdown_endpoint(request: RiskBreakdownRequest) -> Dict[str, Any]:
+    logger.info("risk_breakdown: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
     breakdown = risk_breakdown(prices, weights)
@@ -296,6 +307,7 @@ def risk_breakdown_endpoint(request: RiskBreakdownRequest) -> Dict[str, Any]:
 
 @app.post("/api/monte-carlo")
 def monte_carlo(request: MonteCarloRequest) -> Dict[str, Any]:
+    logger.info("monte_carlo: tickers=%s horizon=%s sims=%s", request.tickers, request.horizon_days, request.simulations)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
     rets = prices.pct_change().dropna()
@@ -319,6 +331,7 @@ def monte_carlo(request: MonteCarloRequest) -> Dict[str, Any]:
 
 @app.post("/api/efficient-frontier")
 def efficient_frontier(request: FrontierRequest) -> Dict[str, Any]:
+    logger.info("efficient_frontier: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     rets = prices.pct_change().dropna()
     frontier = optimizers.markowitz_frontier(rets)
@@ -328,6 +341,7 @@ def efficient_frontier(request: FrontierRequest) -> Dict[str, Any]:
 
 @app.post("/api/strategy-builder")
 def strategy_builder(request: StrategyBuilderRequest) -> Dict[str, Any]:
+    logger.info("strategy_builder: tickers=%s rules=%s", request.tickers, len(request.rules))
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
     strat_returns, positions = run_strategy_builder(
@@ -363,6 +377,7 @@ def strategy_builder(request: StrategyBuilderRequest) -> Dict[str, Any]:
 
 @app.post("/api/stress-test")
 def stress_test(request: StressTestRequest) -> Dict[str, Any]:
+    logger.info("stress_test: tickers=%s scenario=%s", request.tickers, request.scenario)
     weights = normalize_weights(request.tickers, request.weights)
     periods = {
         "dotcom": ("2000-03-01", "2002-10-31"),
@@ -402,6 +417,7 @@ def stress_test(request: StressTestRequest) -> Dict[str, Any]:
 
 @app.post("/api/benchmark")
 def benchmark(request: BenchmarkRequest) -> Dict[str, Any]:
+    logger.info("benchmark: tickers=%s benchmark=%s", request.tickers, request.benchmark)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     bench_prices = fetch_price_history([request.benchmark], request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
