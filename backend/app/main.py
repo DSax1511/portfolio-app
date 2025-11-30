@@ -98,19 +98,22 @@ DEV_ORIGINS = [
     "http://0.0.0.0:3000",
 ]
 DEFAULT_ORIGINS = ",".join(DEV_ORIGINS)
-ALLOWED_ORIGINS = sorted(
-    {
-        origin.strip()
-        for origin in (settings.frontend_origins or DEFAULT_ORIGINS).split(",")
-        if origin.strip()
-    }
-)
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in (settings.frontend_origins or DEFAULT_ORIGINS).split(",")
+    if origin.strip()
+}
+# Optionally append a Vercel-style hostname if provided (e.g., VERCEL_URL=portfolio-frontend.vercel.app)
+VERCEL_URL = os.getenv("VERCEL_URL")
+if VERCEL_URL:
+    prefixed = VERCEL_URL if VERCEL_URL.startswith("http") else f"https://{VERCEL_URL}"
+    ALLOWED_ORIGINS.add(prefixed.rstrip("/"))
+ALLOWED_ORIGINS = sorted(ALLOWED_ORIGINS)
 
 app.add_middleware(
     CORSMiddleware,
     # Allow local Vite/Next dev servers; tighten via FRONTEND_ORIGINS in production.
     allow_origins=ALLOWED_ORIGINS or ["*"],
-    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
