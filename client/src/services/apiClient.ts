@@ -1,16 +1,5 @@
-const DEFAULT_API_BASE = "http://localhost:8000";
-
-const inferBaseUrl = () => {
-  // Prefer explicit env override; otherwise fall back to local FastAPI in dev.
-  const envBase = import.meta.env.VITE_API_BASE_URL?.trim();
-  if (envBase) return envBase;
-  if (typeof window === "undefined") return DEFAULT_API_BASE;
-  const { protocol, hostname } = window.location;
-  const host = hostname === "0.0.0.0" ? "localhost" : hostname;
-  return `${protocol}//${host}:8000`;
-};
-
-export const apiBaseUrl = inferBaseUrl().replace(/\/$/, "");
+// API base URL is provided via VITE_API_BASE_URL (set in Vercel to the Render backend, e.g., https://portfolio-app-6lfb.onrender.com); fallback localhost for dev. Do not hard-code domains in code.
+export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 export class ApiClientError extends Error {
   status?: number;

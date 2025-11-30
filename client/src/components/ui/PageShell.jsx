@@ -4,7 +4,7 @@ const PageShell = ({ title, subtitle, actions, children, hideHeader = false }) =
       {!hideHeader && (
         <div className="page-shell__header">
           <div>
-            <p className="label-sm">Portfolio Intelligence</p>
+            <p className="label-sm">Saxton PI · Portfolio Intelligence</p>
             <h1 className="page-title">{title}</h1>
             {subtitle && <p className="page-subtitle">{subtitle}</p>}
           </div>

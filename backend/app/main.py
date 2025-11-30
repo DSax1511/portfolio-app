@@ -83,17 +83,19 @@ from .rebalance import position_sizing, suggest_rebalance
 
 app = FastAPI(title="Portfolio Quant API", version="2.0.0")
 
-# CORS origins: local dev defaults plus optional FRONTEND_ORIGIN/ADDITIONAL_ORIGIN
+# CORS origins: local dev defaults plus optional FRONTEND_ORIGIN/ADDITIONAL_ORIGINS
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
-ADDITIONAL_ORIGIN = os.getenv("ADDITIONAL_ORIGIN")
+ADDITIONAL_ORIGINS = os.getenv("ADDITIONAL_ORIGINS")  # comma-separated list
+# In production, set FRONTEND_ORIGIN to https://saxtonpi.com; ADDITIONAL_ORIGINS can include Vercel previews.
 origins = [
     "http://localhost:4173",
     "http://localhost:5173",
+    "http://localhost:3000",
 ]
 if FRONTEND_ORIGIN:
     origins.append(FRONTEND_ORIGIN)
-if ADDITIONAL_ORIGIN:
-    origins.append(ADDITIONAL_ORIGIN)
+if ADDITIONAL_ORIGINS:
+    origins.extend([o.strip() for o in ADDITIONAL_ORIGINS.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
