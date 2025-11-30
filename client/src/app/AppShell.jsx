@@ -2,13 +2,23 @@ import { useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 
 import "../App.css";
-import { api } from "../api";
+import { portfolioApi } from "../services/portfolioApi";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import AboutPage from "../features/about/AboutPage";
 import AnalyticsPage from "../features/analytics/AnalyticsPage";
+import ContactPage from "../features/contact/ContactPage";
+import HomePage from "../features/home/HomePage";
 import OverviewPage from "../features/overview/OverviewPage";
-import { routes } from "./routes";
+import AllocationPage from "../features/pm/AllocationPage";
+import BacktestsPage from "../features/pm/BacktestsPage";
+import BacktestEnginePage from "../features/quant/BacktestEnginePage";
+import ExecutionSimulatorPage from "../features/quant/ExecutionSimulatorPage";
+import MicrostructurePage from "../features/quant/MicrostructurePage";
+import RegimesPage from "../features/quant/RegimesPage";
+import StrategyBuilderPage from "../features/quant/StrategyBuilderPage";
+import ResearchHomePage from "../features/research/ResearchHomePage";
+import ResearchNotesPage from "../features/research/ResearchNotesPage";
 
 const createDemoPosition = (ticker, description, quantity, avgCost, currentPrice) => {
   const marketValue = Number((quantity * currentPrice).toFixed(2));
@@ -64,7 +74,7 @@ const AppContent = () => {
     formData.append("file", fileToUse);
 
     try {
-      const data = await api.uploadPositions(formData);
+      const data = await portfolioApi.uploadPositions(formData);
       setPortfolio(data);
     } catch (err) {
       console.error("Positions upload error:", err);
@@ -85,12 +95,12 @@ const AppContent = () => {
       setUploadError("");
       setDemoMode(true);
       setPositionsLoading(false);
-      navigate("/overview");
+      navigate("/pm/overview");
       return;
     }
     setPortfolio(savedPortfolio);
     setDemoMode(false);
-    navigate("/overview");
+    navigate("/pm/overview");
   };
 
   const handleFileChange = (e) => {
@@ -141,9 +151,10 @@ const AppContent = () => {
         <main className="main-content">
           <PageLayout>
             <Routes>
-              <Route path="/" element={<Navigate to="/overview" replace />} />
+              <Route path="/" element={<Navigate to="/home" replace />} />
+              <Route path="/home" element={<HomePage />} />
               <Route
-                path="/overview"
+                path="/pm/overview"
                 element={
                   <OverviewPage
                     portfolio={portfolio}
@@ -154,25 +165,25 @@ const AppContent = () => {
                   />
                 }
               />
-          <Route
-            path="/analytics"
-            element={<AnalyticsPage formatCurrency={formatCurrency} />}
-          />
-          <Route
-            path="/backtests"
-            element={
-              <div className="card">
-                <h2>Backtests</h2>
-                <p className="muted">Coming soon — backtest library and scenario analysis.</p>
-              </div>
-            }
-          />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="*" element={<Navigate to="/overview" replace />} />
-        </Routes>
-        {uploadError && (
-          <p className="error-text" style={{ marginTop: "0.5rem" }}>
-            {uploadError}
+              <Route path="/overview" element={<Navigate to="/pm/overview" replace />} />
+              <Route path="/pm/allocation" element={<AllocationPage portfolio={portfolio} demoMode={demoMode} />} />
+              <Route path="/pm/backtests" element={<BacktestsPage />} />
+              <Route path="/pm/risk" element={<AnalyticsPage formatCurrency={formatCurrency} />} />
+              <Route path="/analytics" element={<Navigate to="/pm/risk" replace />} />
+              <Route path="/quant/strategy-builder" element={<StrategyBuilderPage />} />
+              <Route path="/quant/backtest-engine" element={<BacktestEnginePage />} />
+              <Route path="/quant/microstructure" element={<MicrostructurePage />} />
+              <Route path="/quant/regimes" element={<RegimesPage />} />
+              <Route path="/quant/execution-simulator" element={<ExecutionSimulatorPage />} />
+              <Route path="/research" element={<ResearchHomePage />} />
+              <Route path="/research/notes" element={<ResearchNotesPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="*" element={<Navigate to="/home" replace />} />
+            </Routes>
+            {uploadError && (
+              <p className="error-text" style={{ marginTop: "0.5rem" }}>
+                {uploadError}
               </p>
             )}
           </PageLayout>
