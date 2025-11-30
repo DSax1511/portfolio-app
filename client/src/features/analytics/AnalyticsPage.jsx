@@ -8,8 +8,12 @@ import RiskConcentrationPanel from "./components/RiskConcentrationPanel";
 import PeriodPerformance from "./components/PeriodPerformance";
 import ScenarioPanel from "./components/ScenarioPanel";
 import PortfolioBuilder from "./components/PortfolioBuilder";
+import RollingStatsChart from "./components/RollingStatsChart";
+import StrategyCommentary from "./components/StrategyCommentary";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
+import MethodologyDrawer from "../../components/ui/MethodologyDrawer";
+import SectionHeader from "../../components/layout/SectionHeader";
 
 const formatPercent = (value, decimals = 2) =>
   value == null ? "—" : `${(value * 100).toFixed(decimals)}%`;
@@ -32,19 +36,46 @@ const AnalyticsPage = () => {
 
   const primaryData = backtestState.data || metricsState.data;
   const summary = primaryData?.summary;
-  const equitySeries = primaryData?.equitySeries ?? [];
-  const drawdownSeries = primaryData?.drawdownSeries ?? [];
+  const equitySeries = useMemo(() => primaryData?.equitySeries ?? [], [primaryData]);
+  const drawdownSeries = useMemo(() => primaryData?.drawdownSeries ?? [], [primaryData]);
   const topDrawdowns = primaryData?.drawdownWindows || [];
   const maxDrawdownWindow = primaryData?.maxDrawdownWindow || null;
-  const benchmarkSeries =
-    backtestState.data?.benchmarkEquitySeries || metricsState.data?.benchmarkEquitySeries || [];
-  const relativeSeries = backtestState.data?.relativeSeries || [];
+  const benchmarkSeries = useMemo(
+    () => backtestState.data?.benchmarkEquitySeries || metricsState.data?.benchmarkEquitySeries || [],
+    [backtestState.data, metricsState.data]
+  );
+  const relativeSeries = useMemo(() => backtestState.data?.relativeSeries || [], [backtestState.data]);
   const riskDecomposition = primaryData?.riskDecomposition || null;
   const periodReturns = primaryData?.periodReturns || [];
   const periodStats = primaryData?.periodStats;
   const scenarios = primaryData?.scenarios || [];
+  const rollingStats = backtestState.data?.rolling || [];
+  const combinedEquity = useMemo(() => {
+    const benchMap = new Map((benchmarkSeries || []).map((b) => [b.date, b.equity]));
+    const relMap = new Map((relativeSeries || []).map((r) => [r.date, r.relative]));
+    return (equitySeries || []).map((row) => ({
+      date: row.date,
+      portfolio: row.equity,
+      benchmark: benchMap.get(row.date) ?? null,
+      relative: relMap.get(row.date) ?? null,
+    }));
+  }, [equitySeries, benchmarkSeries, relativeSeries]);
+  const exportPeriods = () => {
+    if (!periodReturns || !periodReturns.length) return;
+    const header = ["Year", "Month", "Return %"];
+    const rows = periodReturns.map((p) => [p.year, p.month, (p.returnPct * 100).toFixed(2)].join(","));
+    const csv = [header.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "period_returns.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   const loading = metricsState.loading || backtestState.loading;
   const error = backtestState.error || metricsState.error;
+  const [showMethodology, setShowMethodology] = useState(false);
 
   const normalizedRows = portfolioRows.filter((r) => r.ticker);
   const sumWeights = normalizedRows.reduce((s, r) => s + (r.weight || 0), 0);
@@ -78,7 +109,7 @@ const AnalyticsPage = () => {
       strategy: "buy_and_hold",
       ...payload,
       rebalance_frequency: "none",
-      benchmark: null,
+      benchmark: "SPY",
       parameters: {},
     });
   };
@@ -113,14 +144,9 @@ const AnalyticsPage = () => {
       subtitle="Centralized analytics, risk decomposition, period performance, and scenario testing."
       actions={
         <div className="action-row">
-          <div className="stat-box">
-            <p className="muted">Total return</p>
-            <p>{formatPercent(summary?.totalReturn)}</p>
-          </div>
-          <div className="stat-box">
-            <p className="muted">Sharpe</p>
-            <p>{formatRatio(summary?.sharpe)}</p>
-          </div>
+          <button className="btn btn-ghost" onClick={() => setShowMethodology(true)}>
+            Methodology
+          </button>
         </div>
       }
     >
@@ -157,11 +183,12 @@ const AnalyticsPage = () => {
         loading={loading}
       />
 
-      <Card title="Performance & Risk Summary" subtitle="Key return and risk metrics from centralized analytics.">
-        <div className="section-heading">
-          <h3>Performance &amp; Risk Summary</h3>
-          <p className="muted">Key return and risk metrics from centralized analytics.</p>
-        </div>
+      <SectionHeader
+        overline="Portfolio Intelligence"
+        title="Performance & Risk Summary"
+        subtitle="Key return and risk metrics from centralized analytics."
+      />
+      <Card>
         {loading ? (
           <p className="muted">Loading results...</p>
         ) : !primaryData ? (
@@ -178,6 +205,12 @@ const AnalyticsPage = () => {
         )}
       </Card>
 
+      <StrategyCommentary
+        commentary={primaryData?.commentary}
+        loading={loading}
+        error={error}
+      />
+
       <div className="analytics-grid">
         <div className="card">
           <div className="section-heading">
@@ -192,9 +225,7 @@ const AnalyticsPage = () => {
             <p className="muted">Run an analysis to plot the equity curve.</p>
           ) : (
             <EquityCurveChart
-              portfolioSeries={equitySeries}
-              benchmarkSeries={benchmarkSeries}
-              relativeSeries={relativeSeries}
+              combinedSeries={combinedEquity}
               hoveredDate={hoveredDate}
               onHover={setHoveredDate}
             />
@@ -248,25 +279,27 @@ const AnalyticsPage = () => {
         )}
       </div>
 
-      <Card title="Period Performance" subtitle="Monthly return breakdown with hit rate and best/worst periods.">
-        <div className="section-heading">
-          <h3>Period Performance</h3>
-          <p className="muted">Monthly return breakdown with hit rate and best/worst periods.</p>
-        </div>
+      <SectionHeader
+        overline="Diagnostics"
+        title="Period Performance"
+        subtitle="Monthly returns, hit rate, and best/worst periods."
+      />
+      <Card>
         {error ? (
           <p className="error-text">{error}</p>
         ) : loading ? (
           <p className="muted">Loading period performance...</p>
         ) : (
-          <PeriodPerformance periods={periodReturns} stats={periodStats} />
+          <PeriodPerformance periods={periodReturns} stats={periodStats} onExport={exportPeriods} />
         )}
       </Card>
 
-      <Card title="Risk & Concentration" subtitle="Risk contributions and portfolio concentration diagnostics.">
-        <div className="section-heading">
-          <h3>Risk &amp; Concentration</h3>
-          <p className="muted">Risk contributions and portfolio concentration diagnostics.</p>
-        </div>
+      <SectionHeader
+        overline="Risk"
+        title="Risk & Concentration"
+        subtitle="Risk contributions, concentration metrics, and drawdowns."
+      />
+      <Card>
         {error ? (
           <p className="error-text">{error}</p>
         ) : loading ? (
@@ -282,18 +315,30 @@ const AnalyticsPage = () => {
         )}
       </Card>
 
-      <Card title="Scenario & Stress Testing" subtitle="Shock the portfolio and estimate P&L and drawdown impact.">
-        <div className="section-heading">
-          <h3>Scenario &amp; Stress Testing</h3>
-          <p className="muted">Shock the portfolio and estimate P&amp;L and drawdown impact.</p>
-        </div>
+      <SectionHeader
+        overline="Scenarios"
+        title="Scenario & Stress Testing"
+        subtitle="Shock the portfolio and estimate P&L and drawdown impact."
+      />
+      <Card>
         <ScenarioPanel
           scenarios={scenarios}
           runScenario={runScenario}
           loading={loading}
           error={error}
+          summaryMaxDrawdown={summary?.maxDrawdown}
         />
       </Card>
+      <SectionHeader
+        overline="Rolling"
+        title="Rolling Statistics"
+        subtitle="60-day rolling vol, Sharpe, and beta vs SPY."
+        actions={<button className="btn btn-ghost" onClick={() => setShowMethodology(true)}>Methodology</button>}
+      />
+      <Card>
+        <RollingStatsChart data={rollingStats} />
+      </Card>
+      <MethodologyDrawer open={showMethodology} onClose={() => setShowMethodology(false)} />
     </PageShell>
   );
 };

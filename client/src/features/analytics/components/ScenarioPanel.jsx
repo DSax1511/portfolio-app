@@ -1,23 +1,39 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 
 const formatPercent = (value) =>
   value == null ? "—" : `${(value * 100).toFixed(1)}%`;
 
-const ScenarioPanel = ({ scenarios, runScenario, loading, error }) => {
+const ScenarioPanel = ({ scenarios, runScenario, loading, error, summaryMaxDrawdown }) => {
   const [customShock, setCustomShock] = useState(-0.1);
-  const [customResult, setCustomResult] = useState(null);
-
-  useEffect(() => {
-    if (!runScenario) return;
-    setCustomResult(runScenario(customShock));
+  const customResult = useMemo(() => {
+    if (!runScenario) return null;
+    return runScenario(customShock);
   }, [customShock, runScenario]);
 
+  const presetRows = (scenarios || []).map((s) => {
+    let label = s.label;
+    if (!label) {
+      if (s.shockPct <= -0.2) label = "Severe shock";
+      else if (s.shockPct <= -0.1) label = "Standard pullback";
+      else if (s.shockPct <= -0.05) label = "Mild correction";
+    }
+    return { ...s, label };
+  });
   const rows = [
-    ...(scenarios || []),
+    ...presetRows,
     customResult
       ? { ...customResult, shockPct: customShock, label: "Custom" }
       : { shockPct: customShock, pnlPct: null, newEquity: null, maxDrawdownUnderShock: null, label: "Custom" },
   ];
+
+  const interpretation = () => {
+    if (!customResult) return null;
+    const hist = summaryMaxDrawdown ?? 0;
+    const shockDd = customResult.maxDrawdownUnderShock ?? 0;
+    const compare =
+      shockDd > hist ? "worse" : Math.abs(shockDd - hist) < 0.02 ? "similar to" : "less severe than";
+    return `A ${formatPercent(customShock)} shock implies ~${formatPercent(customResult.pnlPct)} P&L and pro-forma max drawdown of ${formatPercent(shockDd)}, ${compare} historical max drawdown (${formatPercent(hist)}).`;
+  };
 
   return (
     <div>
@@ -62,8 +78,8 @@ const ScenarioPanel = ({ scenarios, runScenario, loading, error }) => {
       </div>
       {rows.length > 0 && (
         <p className="muted" style={{ marginTop: "0.75rem" }}>
-          Example: {formatPercent(-0.2)} shock implies ~{formatPercent(customResult?.pnlPct)} P&amp;L and
-          max drawdown near {formatPercent(customResult?.maxDrawdownUnderShock)} (using beta-adjusted shock).
+          {interpretation() ||
+            `Example: ${formatPercent(customShock)} shock implies ~${formatPercent(customResult?.pnlPct)} P&L and max drawdown near ${formatPercent(customResult?.maxDrawdownUnderShock)}.`}
         </p>
       )}
     </div>

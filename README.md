@@ -1,25 +1,18 @@
 Portfolio Quant App
 
-A modern, feature-based React + FastAPI application for portfolio analytics, risk metrics, backtesting, and optimization.
+A modern React + FastAPI quantitative analytics platform for portfolio analysis, risk metrics, backtesting, optimization, and empirical strategy development.
 
-The app consists of:
+Built with a feature-based architecture, production-grade engineering patterns, and ready for local dev, Docker Compose, or cloud deployment (Vercel / Render).
 
-Backend: Modular FastAPI quant engine (analytics, risk, backtests, optimizers, rebalance).
+🚀 Features
+Frontend — /client
 
-Frontend: Vite + React client with clean feature architecture and routed pages (Overview / Positions / Analytics).
+Modern Vite + React application with a modular, scalable structure:
 
-Deployment: Local dev (Python/Node), Docker Compose, or cloud hosting (Render/Vercel-ready).
-
-Features
-Frontend (client/)
-
-Modern React/Vite architecture with feature folders:
-
-Overview — portfolio snapshot, equity + PnL, summary metrics
-
-Positions — holdings table, exposures, weights
-
-Analytics — performance, Sharpe/vol, drawdowns, backtests, stress tests
+Feature-based pages:
+Overview (snapshot, equity curve, PnL, metrics)
+Positions (holdings, exposures, weights)
+Analytics (performance stats, Sharpe/vol, drawdowns, backtests, stress tests)
 
 Centralized API client (services/apiClient)
 
@@ -27,122 +20,145 @@ Shared domain types (types/portfolio.ts)
 
 Pure quant math extracted into lib/analyticsCalculations
 
-Demo mode and CSV upload support
+Demo mode + CSV upload support
 
-Responsive design and charting with Recharts
+Responsive UI + rich charting with Recharts
 
-Backend (backend/app/)
+Clean routing using a dedicated AppShell and routes.tsx
 
-Modular FastAPI structure:
+Backend — /backend/app
 
-api/v1 — cleanly separated routes (overview, positions, analytics)
+Modular FastAPI quant engine designed around clarity, testability, and performance:
 
-services/ — portfolio & analytics business logic
+Clean API under api/v1/
+(overview, positions, analytics, backtests, optimizers)
 
-schemas/ — Pydantic models for typed responses
+Services layer (services/) for business logic & analytics computation
 
-core/ — config, exceptions, dependencies
+Typed Pydantic schemas (schemas/) for all endpoints
 
-Analytics engine:
+Config & exceptions (core/)
+
+Optional caching for market data and recurring calculations
+
+Analytics engine includes:
 
 Returns, volatility, Sharpe, Sortino
 
-Max drawdown & drawdown series
+Max drawdown & full drawdown series
 
-Position-level metrics & exposures
+Position-level exposures & risk
 
-Backtesting + optimizers (if enabled)
+Backtesting + simple optimizers
 
-Optional caching of market data for faster runs
+🧪 Project Structure
+backend/
+  app/
+    api/v1/             # API routes
+    services/           # analytics & portfolio logic
+    schemas/            # Pydantic models
+    core/               # settings, config, exceptions
+    data_cache/         # optional cached market data
+    runs/               # backtest logs
+  tests/                # unit + integration tests
 
-Installation & Quick Start
-Local Development
+client/
+  src/
+    app/                # AppShell, global routes
+    features/           # overview / positions / analytics
+    services/           # API client
+    types/              # shared TS domain types
+    lib/                # pure quant math
+    components/         # shared UI pieces
+    hooks/              # shared hooks
+
+🛠 Local Development
 1. Backend (FastAPI)
 cd backend
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 
-Backend runs at:
-http://localhost:8000
+FastAPI runs at: http://localhost:8000
 
-Docs:
-http://localhost:8000/docs
+Docs: http://localhost:8000/docs
 
-2. Frontend (React/Vite)
+2. Frontend (React + Vite)
 cd client
 npm install
 echo "VITE_API_BASE_URL=http://localhost:8000" > .env
 npm run dev -- --host --port 5173
 
 
-Frontend runs at:
-http://localhost:5173
+Frontend runs at: http://localhost:5173
 
- Docker Compose (one command)
+🐳 Docker Compose (One Command)
 
-To run the full stack using Docker:
+To run the full stack with Docker:
 
 docker compose up --build
 
 
-Services exposed:
+Exposed services:
 
 Service	URL
 Backend	http://localhost:8000
 
 Frontend	http://localhost:3000
 
-VITE_API_BASE_URL is automatically wired to the backend container.
+VITE_API_BASE_URL is automatically wired to the backend container inside Docker.
 
-Environment Variables
+⚙️ Environment Variables
 Backend
 Variable	Description
-FRONTEND_ORIGINS	Comma-separated allowed CORS origins
-DATA_CACHE_DIR	Directory for price cache (default: backend/app/data_cache)
-RUNS_DIR	Directory for backtest logs (default: backend/app/runs)
+FRONTEND_ORIGINS	Allowed CORS origins (comma-separated)
+DATA_CACHE_DIR	Price cache directory (default: app/data_cache)
+RUNS_DIR	Backtest output directory
 Frontend
 Variable	Description
-VITE_API_BASE_URL	URL of FastAPI backend (default: same origin)
-
-Testing
+VITE_API_BASE_URL	URL of the FastAPI backend
+🧪 Testing
 Backend Tests
 cd backend
 pytest
 
 
-Tests include:
+Covers:
 
-Unit tests (analytics math, services)
+Analytics math
 
-Integration tests (FastAPI endpoints, expected response shapes)
+Services layer
 
-Frontend Tests
+Endpoint response shapes
 
-(when enabled)
-Uses Vitest + React Testing Library.
+Frontend Tests (optional)
 
-Project Structure
-backend/
-  app/
-    api/v1/             # routes (overview, positions, analytics)
-    services/           # business logic (analytics, portfolio, backtests)
-    schemas/            # pydantic models
-    core/               # settings, exceptions, dependencies
-    data_cache/         # price & analytics caching
-    runs/               # backtest logs
-  tests/                # unit + integration tests
+Vitest + React Testing Library (when enabled)
 
-client/
-  src/
-    app/                # AppShell, routing
-    features/           # overview/positions/analytics pages
-    services/           # apiClient + portfolioApi
-    types/              # shared TS domain types
-    lib/                # pure quant calculations
-    components/         # shared UI components
-    hooks/              # shared hooks
+📦 Deployment
 
- 
+This project is ready for:
+
+Render (backend)
+
+Vercel or Netlify (frontend)
+
+Full Docker deployment via Compose or Kubernetes
+
+Local development without Docker
+
+🎯 Purpose
+
+This project is designed as a portfolio analytics + quant engineering showcase, combining:
+
+Modern frontend architecture
+
+Typed backend with clean APIs
+
+Real quant metrics
+
+Reproducible environments (Docker)
+
+Extensible structure for more factor models, ML signals, execution sims, etc.

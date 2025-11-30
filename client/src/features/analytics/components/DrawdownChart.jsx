@@ -32,7 +32,13 @@ const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover
           }}
           onMouseLeave={() => onHover(null)}
         >
-          <XAxis dataKey="date" tick={false} />
+          <XAxis
+            dataKey="date"
+            tickFormatter={formatDateTick}
+            stroke="#6b7280"
+            minTickGap={40}
+            interval="preserveStartEnd"
+          />
           <YAxis
             tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
             label={{ value: "Drawdown (%)", angle: -90, position: "insideLeft" }}
@@ -52,7 +58,11 @@ const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover
               fillOpacity={0.08}
             />
           )}
-          <Tooltip formatter={(v) => formatDrawdown(v)} labelFormatter={(label) => label} />
+          <Tooltip
+            formatter={(v) => formatDrawdown(v)}
+            labelFormatter={formatDateTickShort}
+            contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b" }}
+          />
           <Area dataKey="drawdown" stroke="#ef4444" fill="#ef4444" fillOpacity={0.25} />
         </AreaChart>
       </ResponsiveContainer>
@@ -61,3 +71,4 @@ const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover
 };
 
 export default DrawdownChart;
+import { formatDateTick, formatDateTickShort } from "../../../utils/format";

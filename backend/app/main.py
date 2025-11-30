@@ -5,6 +5,7 @@ import datetime as dt
 import io
 import json
 import logging
+import math
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,7 +17,9 @@ import yfinance as yf
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import analytics, backtests, optimizers
+from . import analytics, backtests, optimizers, commentary
+from .quant_engine import run_quant_backtest
+from .quant_regimes import detect_regimes
 from .analytics import (
     attribution_allocation_selection,
     benchmark_compare,
@@ -40,6 +43,7 @@ from .config import settings
 from .data import fetch_price_history
 from .infra.logging_utils import log_run, timed
 from .infra.utils import IndicatorSpec, StrategyRule, normalize_weights, parse_number, weighted_portfolio_price
+from .quant_microstructure import compute_microstructure
 from .models import (
     ApiError,
     BacktestRequest,
@@ -57,6 +61,16 @@ from .models import (
     PositionSizingResponse,
     RebalanceRequest,
     RebalanceResponse,
+    QuantBacktestRequest,
+    QuantBacktestResponse,
+    RegimeRequest,
+    RegimeResponse,
+    PMBacktestRequest,
+    PMBacktestResponse,
+    MicrostructureRequest,
+    MicrostructureResponse,
+    PMAllocationRequest,
+    PMAllocationResponse,
     RiskBreakdownRequest,
     SavePresetRequest,
     StrategyBuilderRequest,
@@ -71,6 +85,8 @@ DEFAULT_ORIGINS = ",".join(
     [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
         "http://localhost:3000",
@@ -167,6 +183,33 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
     stats = compute_performance_stats(portfolio_returns)
     curve = equity_curve_payload(portfolio_returns)
 
+    # SPY benchmark
+    benchmark_symbol = "SPY"
+    bench_prices = fetch_price_history([benchmark_symbol], request.start_date, request.end_date)
+    bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
+    bench_returns = bench_returns.reindex(portfolio_returns.index).ffill().bfill()
+    bench_curve = equity_curve_payload(bench_returns)
+    combined_curve = analytics.combined_equity_vs_benchmark(portfolio_returns, bench_returns)
+    benchmark_payload = {
+        "benchmark": benchmark_symbol,
+        "dates": combined_curve["dates"],
+        "returns": [float(r) for r in bench_returns],
+        "equity_curve": bench_curve,
+        "relative": combined_curve["relative"],
+    }
+
+    commentary_payload = commentary.build_commentary(
+        portfolio_returns,
+        bench_returns,
+        stats,
+        drawdowns=None,
+        rolling_vol=None,
+        rolling_sharpe=None,
+        weights=weights,
+        tickers=request.tickers,
+        scenarios=None,
+    )
+
     return PortfolioMetricsResponse(
         tickers=request.tickers,
         weights=weights,
@@ -174,6 +217,8 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
         end_date=curve["dates"][-1] if curve["dates"] else request.end_date,
         metrics=stats,
         equity_curve=curve,
+        benchmark=benchmark_payload,
+        commentary=commentary_payload,
     )
 
 
@@ -190,6 +235,100 @@ def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: D
     }
     log_run(settings.runs_dir / f"{run_id}.json", payload)
     return run_id
+
+
+def _pm_summary(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -> Dict[str, float]:
+    periods = 252
+    total_return = float((1 + portfolio_returns).prod() - 1)
+    cagr = float((1 + total_return) ** (periods / len(portfolio_returns)) - 1) if len(portfolio_returns) else 0.0
+    vol = float(portfolio_returns.std() * math.sqrt(periods)) if not portfolio_returns.empty else 0.0
+    downside = portfolio_returns[portfolio_returns < 0].std() * math.sqrt(periods) if not portfolio_returns.empty else 0.0
+    sharpe = cagr / vol if vol else 0.0
+    sortino = cagr / downside if downside else 0.0
+
+    equity = (1 + portfolio_returns).cumprod()
+    drawdowns = equity / equity.cummax() - 1
+    max_dd = float(drawdowns.min()) if not drawdowns.empty else 0.0
+
+    bench_cagr = 0.0
+    alpha = beta = tracking_error = None
+    aligned = pd.concat([portfolio_returns, benchmark_returns], axis=1, join="inner").dropna()
+    if not aligned.empty:
+        bench = aligned.iloc[:, 1]
+        port = aligned.iloc[:, 0]
+        X = np.column_stack([np.ones(len(bench)), bench.values])
+        betas, _, _, _ = np.linalg.lstsq(X, port.values, rcond=None)
+        alpha = float(betas[0] * periods)
+        beta = float(betas[1])
+        active = port - bench
+        tracking_error = float(active.std() * math.sqrt(periods)) if active.std() != 0 else 0.0
+        bench_cagr = float((1 + bench).prod() ** (periods / len(bench)) - 1)
+
+    return {
+        "cagr": cagr,
+        "benchmark_cagr": bench_cagr,
+        "annualized_volatility": vol,
+        "sharpe_ratio": sharpe,
+        "sortino_ratio": sortino,
+        "max_drawdown": max_dd,
+        "beta": beta if beta is not None else 0.0,
+        "alpha": alpha if alpha is not None else 0.0,
+        "tracking_error": tracking_error if tracking_error is not None else 0.0,
+    }
+
+
+def _allocation_from_payload(request: PMAllocationRequest) -> PMAllocationResponse:
+    tickers = request.tickers
+    quantities = request.quantities
+    prices = request.prices
+
+    # If prices are missing, fetch latest close for the tickers
+    if prices is None:
+        price_df = fetch_price_history(tickers, None, None)
+        latest = price_df.iloc[-1]
+        prices = [float(latest[t]) for t in tickers]
+
+    if quantities is None:
+        # default 1 share each if not provided
+        quantities = [1.0 for _ in tickers]
+
+    market_values = [q * p for q, p in zip(quantities, prices)]
+    total_value = sum(market_values) or 1.0
+    weights = [mv / total_value for mv in market_values]
+
+    if request.target_weights:
+        target_weights = request.target_weights
+    else:
+        target_weights = [1 / len(tickers) for _ in tickers]
+
+    drifts = [w - tw for w, tw in zip(weights, target_weights)]
+    tolerance = request.tolerance or 0.02
+    max_drift = max((abs(d) for d in drifts), default=0.0)
+    outside = sum(1 for d in drifts if abs(d) > tolerance)
+    turnover = sum(abs(d) for d in drifts) / 2
+
+    items = []
+    for t, w, tw, d, mv in zip(tickers, weights, target_weights, drifts, market_values):
+        items.append(
+            {
+                "ticker": t,
+                "weight": w,
+                "target_weight": tw,
+                "drift": d,
+                "value": mv,
+            }
+        )
+
+    return PMAllocationResponse(
+        items=items,
+        as_of=dt.datetime.utcnow().strftime("%Y-%m-%d"),
+        total_value=total_value,
+        summary={
+            "max_drift": max_drift,
+            "outside_tolerance": outside,
+            "turnover_to_rebalance": turnover,
+        },
+    )
 
 
 @app.post("/api/backtest", response_model=BacktestResponse, responses={400: {"model": ApiError}})
@@ -241,14 +380,20 @@ def backtest(request: BacktestRequest) -> BacktestResponse:
 
     benchmark_payload = None
     rolling_payload = None
-    if request.benchmark:
-        bench_prices = fetch_price_history([request.benchmark], request.start_date, request.end_date)
+    benchmark_symbol = request.benchmark or "SPY"
+    if benchmark_symbol:
+        bench_prices = fetch_price_history([benchmark_symbol], request.start_date, request.end_date)
         bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
         bench_returns = bench_returns.reindex(returns.index).ffill().bfill()
+        bench_curve = equity_curve_payload(bench_returns)
+        combined_curve = analytics.combined_equity_vs_benchmark(returns, bench_returns)
         benchmark_payload = {
-          "benchmark": request.benchmark,
-          "dates": [idx.strftime("%Y-%m-%d") for idx in bench_returns.index],
+          "benchmark": benchmark_symbol,
+          "dates": combined_curve["dates"],
           "returns": [float(r) for r in bench_returns],
+          "equity_curve": bench_curve,
+          "relative": combined_curve["relative"],
+          "combined_curve": combined_curve,
         }
         rolling_payload = analytics.rolling_active_stats(returns, bench_returns)
 
@@ -269,7 +414,112 @@ def backtest(request: BacktestRequest) -> BacktestResponse:
         rolling_active=rolling_payload,
         turnover=turnover_metric,
         run_id=run_id,
+        commentary=commentary.build_commentary(
+            returns,
+            bench_returns if benchmark_payload else None,
+            stats,
+            drawdowns=None,
+            rolling_vol=None,
+            rolling_sharpe=None,
+            weights=weights,
+            tickers=request.tickers,
+            scenarios=None,
+        ),
     )
+
+
+@app.post("/api/v1/pm/backtest", response_model=PMBacktestResponse, responses={400: {"model": ApiError}})
+def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    weights = normalize_weights(request.tickers, request.weights)
+
+    returns_df = prices.pct_change().dropna()
+    portfolio_returns, _ = apply_rebalance(returns_df, weights, request.rebalance_freq or "none")
+
+    benchmark_symbol = request.benchmark or "SPY"
+    bench_prices = fetch_price_history([benchmark_symbol], request.start_date, request.end_date)
+    bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
+    bench_returns = bench_returns.reindex(portfolio_returns.index).ffill().bfill()
+
+    # Align lengths and drop any remaining NaNs
+    aligned = pd.concat([portfolio_returns, bench_returns], axis=1, join="inner").dropna()
+    if aligned.empty:
+        raise HTTPException(status_code=400, detail="Not enough overlapping data to run backtest.")
+    portfolio_returns = aligned.iloc[:, 0]
+    bench_returns = aligned.iloc[:, 1]
+
+    portfolio_equity = (1 + portfolio_returns).cumprod()
+    benchmark_equity = (1 + bench_returns).cumprod()
+    dates = [d.strftime("%Y-%m-%d") for d in portfolio_equity.index]
+
+    summary = _pm_summary(portfolio_returns, bench_returns)
+
+    return PMBacktestResponse(
+        dates=dates,
+        portfolio_equity=[float(v) for v in portfolio_equity],
+        benchmark_equity=[float(v) for v in benchmark_equity],
+        portfolio_returns=[float(r) for r in portfolio_returns],
+        benchmark_returns=[float(r) for r in bench_returns],
+        summary=summary,
+    )
+
+
+@app.post("/api/v1/pm/allocation", response_model=PMAllocationResponse, responses={400: {"model": ApiError}})
+def pm_allocation(request: PMAllocationRequest) -> PMAllocationResponse:
+    try:
+        return _allocation_from_payload(request)
+    except Exception as exc:
+        logger.exception("pm_allocation error")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/v1/quant/backtest", response_model=QuantBacktestResponse, responses={400: {"model": ApiError}})
+def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
+    payload = run_quant_backtest(request)
+    summary = _pm_summary(
+        pd.Series(payload["returns"], index=pd.to_datetime(payload["dates"])),
+        pd.Series(payload["benchmark_returns"], index=pd.to_datetime(payload["dates"])),
+    )
+
+    # Trade-level stats
+    wins = [t.pnl for t in payload["trades"] if t.pnl > 0]
+    losses = [t.pnl for t in payload["trades"] if t.pnl < 0]
+    trade_count = len(payload["trades"])
+    win_rate = float(len(wins) / trade_count) if trade_count else 0.0
+    avg_win = float(np.mean(wins)) if wins else 0.0
+    avg_loss = float(np.mean(losses)) if losses else 0.0
+
+    summary.update(
+        {
+            "win_rate": win_rate,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+        }
+    )
+
+    return QuantBacktestResponse(
+        dates=payload["dates"],
+        equity_curve=payload["equity_curve"],
+        benchmark_equity=payload["benchmark_equity"],
+        returns=payload["returns"],
+        benchmark_returns=payload["benchmark_returns"],
+        trades=payload["trades"],
+        summary=summary,
+    )
+
+
+@app.post("/api/v1/quant/regimes", response_model=RegimeResponse, responses={400: {"model": ApiError}})
+def quant_regimes(request: RegimeRequest) -> RegimeResponse:
+    try:
+        return detect_regimes(request)
+    except Exception as exc:
+        logger.exception("quant_regimes error")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/v1/quant/microstructure", response_model=MicrostructureResponse, responses={400: {"model": ApiError}})
+def microstructure(request: MicrostructureRequest) -> MicrostructureResponse:
+    return compute_microstructure(request)
 
 
 @app.post("/api/backtest-config", response_model=BacktestResponse, responses={400: {"model": ApiError}})

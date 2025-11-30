@@ -109,6 +109,41 @@ export const portfolioApi = {
     end_date?: string | null;
   }) => apiClient.post<EfficientFrontierResponse>("/api/efficient-frontier", payload),
 
+  runQuantBacktest: (payload: {
+    strategy: Record<string, any>;
+    slippage_bps?: number;
+    commission_per_trade?: number;
+    max_position_size?: number;
+    benchmark?: string | null;
+  }) => apiClient.post("/api/v1/quant/backtest", payload),
+
+  getRegimes: (payload: { symbol: string; start_date: string; end_date: string; n_states?: number; model_type?: string }) =>
+    apiClient.post("/api/v1/quant/regimes", payload),
+
+  runMicrostructure: (payload: {
+    symbol: string;
+    start_date: string;
+    end_date: string;
+    bar_interval?: string;
+  }) => apiClient.post("/api/v1/quant/microstructure", payload),
+
+  runPMBacktest: (payload: {
+    tickers: string[];
+    weights?: number[] | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    rebalance_freq?: string | null;
+    benchmark?: string | null;
+  }) => apiClient.post("/api/v1/pm/backtest", payload),
+
+  getPMAllocation: (payload: {
+    tickers: string[];
+    quantities?: number[] | null;
+    prices?: number[] | null;
+    target_weights?: number[] | null;
+    tolerance?: number | null;
+  }) => apiClient.post("/api/v1/pm/allocation", payload),
+
   calculatePositionSizing: (payload: {
     ticker: string;
     entry_price: number;

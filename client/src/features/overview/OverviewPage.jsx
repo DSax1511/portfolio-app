@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, Line, LineChart, CartesianGrid } from "recharts";
 
 import Card from "../../components/ui/Card";
 import MetricCard from "../../components/ui/MetricCard";
@@ -8,15 +8,42 @@ import EmptyState from "../../components/ui/EmptyState";
 import PositionsTable from "../../components/ui/PositionsTable";
 import SectorExposurePanel from "./SectorExposurePanel";
 import { portfolioApi } from "../../services/portfolioApi";
+import { formatDateTick } from "../../utils/format";
 
 const COLORS = ["#4f46e5", "#22c55e", "#f97316", "#06b6d4", "#a855f7", "#e11d48"];
 const TECH_TICKERS = new Set(["AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA"]);
+const SECTOR_MAP = {
+  AAPL: "Technology",
+  MSFT: "Technology",
+  AMZN: "Consumer Discretionary",
+  GOOGL: "Technology",
+  META: "Communication Services",
+  NVDA: "Technology",
+  TSLA: "Consumer Discretionary",
+  JPM: "Financials",
+  UNH: "Health Care",
+  XOM: "Energy",
+  VTI: "ETF",
+  SPY: "ETF",
+  QQQ: "ETF",
+  MTUM: "ETF",
+  GLD: "Materials",
+  TLT: "Fixed Income",
+};
+const today = new Date();
+const yearsAgo = (yrs) => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - yrs);
+  return d.toISOString().slice(0, 10);
+};
 
 const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, demoMode }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
   const [showAllDrift, setShowAllDrift] = useState(false);
+  const [pmPerf, setPmPerf] = useState(null);
+  const [pmPerfError, setPmPerfError] = useState("");
 
   const totalValue = useMemo(
     () => portfolio.reduce((sum, p) => sum + p.market_value, 0),
@@ -65,6 +92,16 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
       return acc;
     }, {});
   }, [portfolio]);
+
+  const enrichedPositions = useMemo(() => {
+    const total = totalValue || 1;
+    const totalPnlLocal = totalPnL;
+    return portfolio.map((p) => {
+      const weight = (p.market_value || 0) / total;
+      const contrib = totalPnlLocal !== 0 ? (p.pnl || 0) / totalPnlLocal : 0;
+      return { ...p, weight, contrib };
+    });
+  }, [portfolio, totalValue, totalPnL]);
 
   const insights = useMemo(() => {
     if (!dashboardData || !portfolio.length) return null;
@@ -182,6 +219,27 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
     loadDashboard();
   }, [portfolio, demoMode]);
 
+  useEffect(() => {
+    const loadDefaultBacktest = async () => {
+      try {
+        const data = await portfolioApi.runPMBacktest({
+          tickers: ["SPY", "QQQ"],
+          weights: [0.5, 0.5],
+          start_date: yearsAgo(3),
+          end_date: today.toISOString().slice(0, 10),
+          rebalance_freq: "monthly",
+          benchmark: "SPY",
+        });
+        setPmPerf(data);
+        setPmPerfError("");
+      } catch (err) {
+        setPmPerf(null);
+        setPmPerfError(err.message || "Backtest unavailable");
+      }
+    };
+    loadDefaultBacktest();
+  }, []);
+
   const metricCards = [
     { label: "Total Value", value: placeholderValue ? "—" : `$${formatCurrency(totalValue)}` },
     { label: "Total P&L", value: placeholderValue ? "—" : `$${formatCurrency(totalPnL)}`, helper: null },
@@ -197,25 +255,6 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
       : null,
   ].filter(Boolean);
 
-  const SECTOR_MAP = {
-    AAPL: "Technology",
-    MSFT: "Technology",
-    AMZN: "Consumer Discretionary",
-    GOOGL: "Technology",
-    META: "Communication Services",
-    NVDA: "Technology",
-    TSLA: "Consumer Discretionary",
-    JPM: "Financials",
-    UNH: "Health Care",
-    XOM: "Energy",
-    VTI: "ETF",
-    SPY: "ETF",
-    QQQ: "ETF",
-    MTUM: "ETF",
-    GLD: "Materials",
-    TLT: "Fixed Income",
-  };
-
   const sectorExposure = useMemo(() => {
     if (!portfolio.length) return [];
     const total = portfolio.reduce((s, p) => s + p.market_value, 0) || 1;
@@ -229,7 +268,55 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
       .sort((a, b) => b.weight - a.weight);
   }, [portfolio]);
 
+  const pmPerfChart = useMemo(() => {
+    if (!pmPerf || !pmPerf.dates) return [];
+    return pmPerf.dates.map((d, i) => {
+      const port = pmPerf.portfolio_equity?.[i] ?? null;
+      const bench = pmPerf.benchmark_equity?.[i] ?? null;
+      return { date: d, portfolio: port, benchmark: bench };
+    });
+  }, [pmPerf]);
+
   const hasPortfolio = portfolio.length > 0;
+  const exportPositionsCsv = () => {
+    if (!portfolio.length) return;
+    const header = [
+      "Ticker",
+      "Quantity",
+      "Avg Cost",
+      "Current Price",
+      "Market Value",
+      "P/L",
+      "Return %",
+      "Weight %",
+      "P&L %",
+      "Sector",
+    ];
+    const rows = enrichedPositions.map((p) => {
+      const invested = p.avg_cost * p.quantity;
+      const retPct = invested > 0 ? (p.pnl / invested) * 100 : 0;
+      return [
+        p.ticker,
+        p.quantity.toFixed(2),
+        p.avg_cost.toFixed(2),
+        p.current_price.toFixed(2),
+        p.market_value.toFixed(2),
+        p.pnl.toFixed(2),
+        retPct.toFixed(2),
+        (p.weight * 100).toFixed(1),
+        (p.contrib * 100).toFixed(1),
+        p.sector || "",
+      ].join(",");
+    });
+    const csv = [header.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "positions_export.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <PageShell
@@ -250,6 +337,52 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
           ))}
         </div>
       </div>
+
+      <Card title="Portfolio backtest vs SPY" subtitle="Default equal-weight SPY/QQQ, monthly rebalance">
+        {pmPerf ? (
+          <div className="analytics-grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
+            <div style={{ minHeight: 220 }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={pmPerfChart} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+                  <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tickFormatter={formatDateTick} minTickGap={32} stroke="#6b7280" />
+                  <YAxis tickFormatter={(v) => `${((v - 1) * 100).toFixed(0)}%`} stroke="#6b7280" />
+                  <Tooltip
+                    labelFormatter={formatDateTick}
+                    formatter={(val, name) => [`${((val - 1) * 100).toFixed(2)}%`, name]}
+                    contentStyle={{ backgroundColor: "#0b1220", borderColor: "#1f2937" }}
+                  />
+                  <Legend />
+                  <Line type="monotone" dataKey="portfolio" name="Portfolio" stroke="#4f8cff" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="benchmark" name="SPY" stroke="#22c55e" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="stats-grid">
+              <div className="stat-box">
+                <p className="metric-label">CAGR</p>
+                <div className="metric-value">{((pmPerf.summary.cagr || 0) * 100).toFixed(2)}%</div>
+              </div>
+              <div className="stat-box">
+                <p className="metric-label">Sharpe</p>
+                <div className="metric-value">{(pmPerf.summary.sharpe_ratio || 0).toFixed(2)}</div>
+              </div>
+              <div className="stat-box">
+                <p className="metric-label">Volatility</p>
+                <div className="metric-value">{((pmPerf.summary.annualized_volatility || 0) * 100).toFixed(2)}%</div>
+              </div>
+              <div className="stat-box">
+                <p className="metric-label">Max Drawdown</p>
+                <div className="metric-value">{((pmPerf.summary.max_drawdown || 0) * 100).toFixed(2)}%</div>
+              </div>
+            </div>
+          </div>
+        ) : pmPerfError ? (
+          <p className="error-text">{pmPerfError}</p>
+        ) : (
+          <p className="muted">Loading default backtest...</p>
+        )}
+      </Card>
 
       <Card
         title="Daily Attention"
@@ -373,7 +506,7 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
       </Card>
 
       <div className="analytics-grid">
-        <Card title="Top Positions">
+        <Card title="Top Positions" subtitle="Spotlight on largest weights">
           {portfolio.length === 0 ? (
             <EmptyState
               title="No positions loaded."
@@ -385,53 +518,34 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
               }
             />
           ) : (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Ticker</th>
-                    <th className="numeric">Quantity</th>
-                    <th className="numeric">Avg Cost</th>
-                    <th className="numeric">Current Price</th>
-                    <th className="numeric">Market Value</th>
-                    <th className="numeric">P/L</th>
-                    <th className="numeric">Weight</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...portfolio]
-                    .sort((a, b) => b.market_value - a.market_value)
-                    .slice(0, 5)
-                    .map((p) => {
-                      const weight =
-                        totalValue > 0
-                          ? ((p.market_value / totalValue) * 100).toFixed(1)
-                          : "0.0";
-                      return (
-                        <tr key={p.ticker}>
-                          <td>{p.ticker}</td>
-                          <td className="numeric">{p.quantity.toFixed(2)}</td>
-                          <td className="numeric">${p.avg_cost.toFixed(2)}</td>
-                          <td className="numeric">${p.current_price.toFixed(2)}</td>
-                          <td className="numeric">${formatCurrency(p.market_value)}</td>
-                          <td
-                            className={p.pnl >= 0 ? "positive" : "negative"}
-                            style={{ textAlign: "right" }}
-                          >
-                            ${formatCurrency(p.pnl)}
-                          </td>
-                          <td className="numeric">{weight}%</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
+            <PositionsTable
+              portfolio={[...enrichedPositions].sort((a, b) => b.weight - a.weight)}
+              formatCurrency={formatCurrency}
+              withWeights
+              withContribution
+              maxRows={5}
+            />
           )}
         </Card>
 
-        <Card title="All Positions" subtitle="Compact blotter view with P&L and returns.">
-          <PositionsTable portfolio={portfolio} formatCurrency={formatCurrency} />
+        <Card
+          title="All Positions"
+          subtitle="Compact blotter view with P&L, returns, weights, and contributions."
+          actions={
+            <button className="btn btn-ghost" onClick={exportPositionsCsv}>
+              Export CSV
+            </button>
+          }
+        >
+          <PositionsTable
+            portfolio={enrichedPositions}
+            formatCurrency={formatCurrency}
+            withWeights
+            withContribution
+            withSector
+            dense
+            footerSummary
+          />
         </Card>
 
         <Card title="Market Value by Ticker">

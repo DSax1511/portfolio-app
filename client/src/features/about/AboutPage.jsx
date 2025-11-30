@@ -1,5 +1,6 @@
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
+import SectionHeader from "../../components/layout/SectionHeader";
 
 const AboutPage = () => {
   return (
@@ -9,11 +10,11 @@ const AboutPage = () => {
     >
       <div className="about-container">
         <div className="about-hero">
-          <p className="label-sm">Portfolio Intelligence</p>
-          <h1 className="page-title">About this Project</h1>
-          <p className="page-subtitle muted">
-            This application is a portfolio analytics and quantitative research tool designed to build, analyze, and stress-test investment strategies.
-          </p>
+          <SectionHeader
+            overline="Portfolio Intelligence"
+            title="About this Project"
+            subtitle="This application is a portfolio analytics and quantitative research tool designed to build, analyze, and stress-test investment strategies."
+          />
         </div>
 
         <div className="about-grid">

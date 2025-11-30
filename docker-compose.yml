@@ -1,30 +1,42 @@
-version: "3.9"
-
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: portfolio-db
+    environment:
+      POSTGRES_DB: portfolio
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: portfolio
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: portfolio-backend
+    environment:
+      # Override with ./backend/.env if present
+      DATABASE_URL: postgres://portfolio:portfolio@db:5432/portfolio
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
     ports:
       - "8000:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
 
   frontend:
     build:
       context: ./client
-      dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: "http://backend:8000"
+        # The browser hits the backend via host-mapped port
+        VITE_API_BASE_URL: http://localhost:8000
     container_name: portfolio-frontend
-    ports:
-      - "3000:80"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
+    ports:
+      - "4173:80"
+    env_file:
+      - ./client/.env.docker
 
+volumes:
+  db-data:

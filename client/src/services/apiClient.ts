@@ -2,12 +2,14 @@ const inferBaseUrl = () => {
   const envBase = import.meta.env.VITE_API_BASE_URL?.trim();
   if (envBase) return envBase;
   if (typeof window === "undefined") return "http://127.0.0.1:8000";
-  const { origin, hostname, port, protocol } = window.location;
-  const devPorts = ["5173", "4173", "3000"];
-  if (port && devPorts.includes(port)) {
-    return `${protocol}//${hostname}:8000`;
+  const { protocol, hostname, port } = window.location;
+  // If we're behind nginx (e.g., port 4173) we can often just use same-origin proxy.
+  const sameOriginCandidate = window.location.origin;
+  if (port === "4173" || port === "" || port === "80") {
+    return sameOriginCandidate;
   }
-  return origin;
+  // Local dev (Vite on 5173) should talk to localhost:8000 directly.
+  return `${protocol}//${hostname}:8000`;
 };
 
 const baseUrl = inferBaseUrl().replace(/\/$/, "");

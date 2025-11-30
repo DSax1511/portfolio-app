@@ -51,6 +51,7 @@ type BaseAnalytics<T> = {
   periodStats: PeriodStats;
   scenarios: ShockScenarioResult[];
   portfolioBeta: number | null;
+  commentary?: Record<string, string | null>;
 };
 
 type MetricsData = BaseAnalytics<PortfolioMetricsResponse>;
@@ -59,6 +60,7 @@ type BacktestData = BaseAnalytics<BacktestResponse> & {
   benchmarkEquitySeries?: EquityPoint[];
   benchmarkDrawdownSeries?: DrawdownPoint[];
   relativeSeries?: RelativePoint[];
+  combinedCurve?: Array<{ date: string; portfolio: number; benchmark: number; relative: number }>;
 };
 type BenchmarkData = BaseAnalytics<BenchmarkResponse> & {
   rolling: RollingPoint[];
@@ -93,10 +95,10 @@ const toDrawdownSeries = (dates: string[], equity: number[]): DrawdownPoint[] =>
   }));
 };
 
-const buildAnalytics = <T extends { equity_curve: EquityCurve; tickers?: string[]; weights?: number[] }>(
-  raw: T
-): BaseAnalytics<T> => {
-  const { equity, dates, equitySeries } = toEquitySeries(raw.equity_curve);
+  const buildAnalytics = <T extends { equity_curve: EquityCurve; tickers?: string[]; weights?: number[] }>(
+    raw: T
+  ): BaseAnalytics<T> => {
+    const { equity, dates, equitySeries } = toEquitySeries(raw.equity_curve);
   const returns = returnsFromEquity(equity);
   const { windows, max } = drawdownWindows(equity, dates);
   const { periods, stats } = aggregatePeriodReturns(returns, dates, "month");
@@ -154,7 +156,27 @@ export const useAnalyticsData = () => {
       setMetricsState({ data: null, loading: true, error: "" });
       try {
         const raw = await portfolioApi.getPortfolioMetrics(payload);
-        setMetricsState({ data: buildAnalytics(raw), loading: false, error: "" });
+        const base = buildAnalytics(raw);
+        const benchmarkEquity =
+          raw.benchmark?.equity_curve?.dates.map((date, idx) => ({
+            date,
+            equity: raw.benchmark?.equity_curve.equity[idx] ?? 0,
+          })) || [];
+        const relativeSeries =
+          raw.benchmark?.relative?.map((val: number, idx: number) => ({
+            date: raw.benchmark?.equity_curve?.dates?.[idx],
+            relative: val,
+          })) || [];
+        setMetricsState({
+          data: {
+            ...base,
+            benchmarkEquitySeries: benchmarkEquity,
+            relativeSeries,
+            commentary: raw.commentary || null,
+          } as any,
+          loading: false,
+          error: "",
+        });
       } catch (err) {
         setMetricsState({
           data: null,
@@ -184,7 +206,11 @@ export const useAnalyticsData = () => {
             )
           : undefined;
         const relativeSeries =
-          benchmarkEquity.length > 0 ? relativePerformanceSeries(base.equitySeries, benchmarkEquity) : undefined;
+          raw.benchmark?.relative?.map((val: number, idx: number) => ({
+            date: raw.benchmark?.equity_curve?.dates?.[idx],
+            relative: val,
+          })) ||
+          (benchmarkEquity.length > 0 ? relativePerformanceSeries(base.equitySeries, benchmarkEquity) : undefined);
         const rolling = rollingStatsWithBeta(
           raw.returns || [],
           raw.benchmark?.returns ?? null,
@@ -195,7 +221,7 @@ export const useAnalyticsData = () => {
           beta: row.beta,
           sharpe: row.sharpe,
           vol: row.vol,
-          annualizedVol: row.vol * Math.sqrt(252),
+          annualizedVol: row.volAnn ?? row.vol * Math.sqrt(252),
         }));
         setBacktestState({
           data: {
@@ -204,6 +230,7 @@ export const useAnalyticsData = () => {
             benchmarkEquitySeries: benchmarkEquity.length ? benchmarkEquity : undefined,
             benchmarkDrawdownSeries: benchmarkDrawdown,
             relativeSeries,
+            commentary: raw.commentary || null,
           },
           loading: false,
           error: "",
@@ -235,7 +262,7 @@ export const useAnalyticsData = () => {
           beta: null,
           sharpe: row.sharpe,
           vol: row.vol,
-          annualizedVol: row.vol * Math.sqrt(252),
+          annualizedVol: row.volAnn ?? row.vol * Math.sqrt(252),
         }));
         setBenchmarkState({
           data: { ...base, rolling },

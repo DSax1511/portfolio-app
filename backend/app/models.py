@@ -56,6 +56,8 @@ class PortfolioMetricsResponse(BaseModel):
     end_date: Optional[str]
     metrics: Dict[str, float]
     equity_curve: Dict[str, List[Any]]
+    benchmark: Optional[Dict[str, Any]] = None
+    commentary: Optional[Dict[str, Any]] = None
 
 
 class BacktestRequest(BaseModel):
@@ -117,6 +119,7 @@ class BacktestResponse(BaseModel):
     rolling_active: Optional[Dict[str, Any]] = None
     turnover: float = 0.0
     run_id: Optional[str] = None
+    commentary: Optional[Dict[str, Any]] = None
 
 
 class FactorExposureRequest(BaseModel):
@@ -358,3 +361,209 @@ class DashboardResponse(BaseModel):
     overweight_underweight: List[Dict[str, Any]]
     largest_drawdowns: List[Dict[str, Any]]
     rebalance: RebalanceResponse
+
+
+class Trade(BaseModel):
+    timestamp: str
+    side: str
+    size: float
+    price: float
+    pnl: float
+
+
+class QuantStrategyConfig(BaseModel):
+    symbol: str
+    timeframe: str = "1D"
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000.0
+    position_mode: str = Field("long_flat", description="long_only, long_flat, or long_short")
+    sma_fast: int = 10
+    sma_slow: int = 30
+    rsi_period: int = 14
+    rsi_overbought: float = 70.0
+    rsi_oversold: float = 30.0
+    use_sma: bool = True
+    use_rsi: bool = False
+
+
+class QuantBacktestRequest(BaseModel):
+    strategy: QuantStrategyConfig
+    slippage_bps: float = 0.5
+    commission_per_trade: float = 0.0
+    max_position_size: float = 1.0
+    benchmark: Optional[str] = "SPY"
+
+
+class QuantBacktestResponse(BaseModel):
+    dates: List[str]
+    equity_curve: List[float]
+    benchmark_equity: List[float]
+    returns: List[float]
+    benchmark_returns: List[float]
+    trades: List[Trade]
+    summary: Dict[str, float]
+
+
+class PMBacktestRequest(BaseModel):
+    tickers: List[str]
+    weights: Optional[List[float]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    rebalance_freq: Optional[str] = Field("none", description="none, monthly, quarterly, annual")
+    benchmark: Optional[str] = Field("SPY", description="Benchmark ticker, defaults to SPY")
+
+    @validator("tickers", allow_reuse=True)
+    def normalize_pm_tickers(cls, v: List[str]) -> List[str]:
+        tickers = [t.strip().upper() for t in v if t.strip()]
+        if not tickers:
+            raise ValueError("At least one ticker is required.")
+        return tickers
+
+    @validator("weights", allow_reuse=True)
+    def validate_pm_weights(cls, v: Optional[List[float]], values: Dict[str, Any]) -> Optional[List[float]]:
+        if v is None:
+            return None
+        tickers = values.get("tickers") or []
+        if len(v) != len(tickers):
+            raise ValueError("weights length must match tickers length.")
+        if sum(v) == 0:
+            raise ValueError("weights must sum to a non-zero value.")
+        return v
+
+
+class PMBacktestResponse(BaseModel):
+    dates: List[str]
+    portfolio_equity: List[float]
+    benchmark_equity: List[float]
+    portfolio_returns: List[float]
+    benchmark_returns: List[float]
+    summary: Dict[str, float]
+
+
+class AllocationItem(BaseModel):
+    ticker: str
+    name: Optional[str] = None
+    weight: float
+    target_weight: Optional[float] = None
+    drift: Optional[float] = None
+    value: Optional[float] = None
+    asset_class: Optional[str] = None
+    sector: Optional[str] = None
+
+
+class PMAllocationRequest(BaseModel):
+    tickers: List[str]
+    quantities: Optional[List[float]] = None
+    prices: Optional[List[float]] = None
+    target_weights: Optional[List[float]] = None
+    tolerance: Optional[float] = Field(0.02, description="Drift tolerance; default 2%")
+
+    @validator("tickers", allow_reuse=True)
+    def normalize_alloc_tickers(cls, v: List[str]) -> List[str]:
+        tickers = [t.strip().upper() for t in v if t.strip()]
+        if not tickers:
+            raise ValueError("At least one ticker is required.")
+        return tickers
+
+    @validator("quantities", "prices", "target_weights", allow_reuse=True)
+    def validate_lengths(cls, v: Optional[List[float]], values: Dict[str, Any], field) -> Optional[List[float]]:
+        if v is None:
+            return None
+        tickers = values.get("tickers") or []
+        if tickers and len(v) != len(tickers):
+            raise ValueError(f"{field.name} length must match tickers length.")
+        return v
+
+
+class PMAllocationResponse(BaseModel):
+    items: List[AllocationItem]
+    as_of: str
+    total_value: Optional[float] = None
+    summary: Dict[str, float]
+
+
+class MicrostructureRequest(BaseModel):
+    symbol: str
+    start_date: str
+    end_date: str
+    bar_interval: str = "1d"
+
+    @validator("symbol", allow_reuse=True)
+    def symbol_upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class MicrostructureBar(BaseModel):
+    timestamp: str
+    midprice: float
+    return_: float
+    next_return: Optional[float] = None
+    volume: float
+    order_flow_proxy: float
+    spread_proxy: Optional[float] = None
+
+
+class MicrostructureSummary(BaseModel):
+    avg_spread: Optional[float] = None
+    median_spread: Optional[float] = None
+    avg_volume: float
+    volatility: float
+    of_next_return_corr: Optional[float] = None
+
+
+class MicrostructureResponse(BaseModel):
+    symbol: str
+    bar_interval: str
+    as_of: str
+    bars: List[MicrostructureBar]
+    summary: MicrostructureSummary
+
+
+class RegimePoint(BaseModel):
+    timestamp: str
+    price: float
+    return_: float
+    regime: int
+
+
+class RegimeStats(BaseModel):
+    regime: int
+    n_obs: int
+    pct_time: float
+    avg_return: float
+    vol: float
+    sharpe: float
+    max_drawdown: float
+
+
+class RegimeSummary(BaseModel):
+    symbol: str
+    start_date: str
+    end_date: str
+    n_states: int
+    overall_vol: float
+    overall_sharpe: float
+    regimes: List[RegimeStats]
+
+
+class RegimeRequest(BaseModel):
+    symbol: str
+    start_date: str
+    end_date: str
+    n_states: int = 3
+    model_type: str = "threshold"
+
+    @validator("symbol", allow_reuse=True)
+    def regime_symbol(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class RegimeResponse(BaseModel):
+    summary: RegimeSummary
+    series: List[RegimePoint]
+    regime_probabilities: Optional[List[List[float]]] = None
+
+
+# Resolve forward references for pydantic
+RegimeResponse.update_forward_refs(RegimeSummary=RegimeSummary, RegimePoint=RegimePoint)

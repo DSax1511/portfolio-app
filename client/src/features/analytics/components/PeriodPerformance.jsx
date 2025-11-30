@@ -15,7 +15,7 @@ const colorForReturn = (ret) => {
   return `rgba(239, 68, 68, ${0.15 + 0.35 * scale})`;
 };
 
-const PeriodPerformance = ({ periods, stats }) => {
+const PeriodPerformance = ({ periods, stats, onExport }) => {
   const grid = useMemo(() => {
     const byYear = new Map();
     periods.forEach((p) => {
@@ -34,6 +34,13 @@ const PeriodPerformance = ({ periods, stats }) => {
 
   return (
     <div>
+      {onExport && (
+        <div className="action-row" style={{ justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+          <button className="btn btn-ghost" onClick={onExport}>
+            Export CSV
+          </button>
+        </div>
+      )}
       <div className="stats-grid" style={{ marginBottom: "1rem" }}>
         <div className="stat-box">
           <p className="muted">Best</p>

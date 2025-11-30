@@ -52,6 +52,22 @@ def equity_curve_payload(returns: pd.Series) -> Dict[str, List[Any]]:
     return {"dates": dates, "equity": values}
 
 
+def combined_equity_vs_benchmark(
+    portfolio_returns: pd.Series, benchmark_returns: pd.Series
+) -> Dict[str, List[Any]]:
+    bench_aligned = benchmark_returns.reindex(portfolio_returns.index).ffill().bfill()
+    port_equity = (1 + portfolio_returns).cumprod()
+    bench_equity = (1 + bench_aligned).cumprod()
+    relative = port_equity - bench_equity
+    dates = [idx.strftime("%Y-%m-%d") for idx in port_equity.index]
+    return {
+        "dates": dates,
+        "portfolio": [float(v) for v in port_equity.values],
+        "benchmark": [float(v) for v in bench_equity.values],
+        "relative": [float(v) for v in relative.values],
+    }
+
+
 def risk_breakdown(prices: pd.DataFrame, weights: List[float]) -> Dict[str, Any]:
     rets = prices.pct_change().dropna()
     cov = rets.cov()

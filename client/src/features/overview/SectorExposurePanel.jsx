@@ -7,6 +7,12 @@ const formatPercent = (v) => `${(v * 100).toFixed(1)}%`;
 
 const SectorExposurePanel = ({ data }) => {
   const hasData = data && data.length > 0;
+  const topLine = hasData
+    ? data
+        .slice(0, 3)
+        .map((d) => `${d.sector} ${formatPercent(d.weight)}`)
+        .join(" · ")
+    : null;
 
   return (
     <Card title="Sector Exposure" subtitle="Weight by sector (% of portfolio)">
@@ -33,6 +39,7 @@ const SectorExposurePanel = ({ data }) => {
               <Bar dataKey="weight" fill="var(--accent)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          {topLine && <p className="muted" style={{ marginTop: "8px" }}>Top sectors: {topLine}</p>}
         </div>
       ) : (
         <EmptyState

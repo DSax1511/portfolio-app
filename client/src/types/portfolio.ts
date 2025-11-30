@@ -55,6 +55,8 @@ export interface PortfolioMetricsResponse {
   end_date?: string | null;
   metrics: PerformanceMetrics;
   equity_curve: EquityCurve;
+  benchmark?: BenchmarkResponse | null;
+  commentary?: Record<string, string> | null;
 }
 
 export interface BacktestResponse extends PortfolioMetricsResponse {
@@ -66,9 +68,118 @@ export interface BacktestResponse extends PortfolioMetricsResponse {
   rolling_active?: Record<string, unknown>;
   turnover: number;
   run_id?: string;
+  commentary?: Record<string, string> | null;
 }
 
 export interface StrategyBuilderResponse extends BacktestResponse {}
+
+export interface PMBacktestResponse {
+  dates: string[];
+  portfolio_equity: number[];
+  benchmark_equity: number[];
+  portfolio_returns: number[];
+  benchmark_returns: number[];
+  summary: {
+    cagr: number;
+    benchmark_cagr: number;
+    annualized_volatility: number;
+    sharpe_ratio: number;
+    sortino_ratio: number;
+    max_drawdown: number;
+    beta: number;
+    alpha: number;
+    tracking_error: number;
+  };
+}
+
+export interface AllocationItem {
+  ticker: string;
+  name?: string | null;
+  weight: number;
+  target_weight?: number | null;
+  drift?: number | null;
+  value?: number | null;
+  asset_class?: string | null;
+  sector?: string | null;
+}
+
+export interface PMAllocationResponse {
+  items: AllocationItem[];
+  as_of: string;
+  total_value?: number | null;
+  summary: {
+    max_drift?: number;
+    outside_tolerance?: number;
+    turnover_to_rebalance?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+export interface MicrostructureBar {
+  timestamp: string;
+  midprice: number;
+  return_: number;
+  next_return?: number | null;
+  volume: number;
+  order_flow_proxy: number;
+  spread_proxy?: number | null;
+}
+
+export interface MicrostructureSummary {
+  avg_spread?: number | null;
+  median_spread?: number | null;
+  avg_volume: number;
+  volatility: number;
+  of_next_return_corr?: number | null;
+}
+
+export interface MicrostructureResponse {
+  symbol: string;
+  bar_interval: string;
+  as_of: string;
+  bars: MicrostructureBar[];
+  summary: MicrostructureSummary;
+}
+
+export interface RegimePoint {
+  timestamp: string;
+  price: number;
+  return_: number;
+  regime: number;
+}
+
+export interface RegimeStats {
+  regime: number;
+  n_obs: number;
+  pct_time: number;
+  avg_return: number;
+  vol: number;
+  sharpe: number;
+  max_drawdown: number;
+}
+
+export interface RegimeSummary {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  n_states: number;
+  overall_vol: number;
+  overall_sharpe: number;
+  regimes: RegimeStats[];
+}
+
+export interface RegimeRequest {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  n_states?: number;
+  model_type?: "threshold" | "hmm_vol";
+}
+
+export interface RegimeResponse {
+  summary: RegimeSummary;
+  series: RegimePoint[];
+}
 
 export interface FactorExposureResponse {
   loadings: Array<{ factor: string; beta: number }>;
@@ -93,6 +204,7 @@ export interface BenchmarkResponse {
   returns: number[];
   equity_curve: EquityCurve;
   rolling?: Record<string, unknown> | null;
+  relative?: number[];
 }
 
 export interface MonteCarloResponse {

@@ -21,6 +21,7 @@ export interface DrawdownWindow {
 export interface RollingStat {
   date: string;
   vol: number;
+  volAnn?: number;
   sharpe: number;
   beta: number | null;
 }
@@ -42,6 +43,15 @@ export interface RiskDecomposition {
   positionContributions: RiskContribution[];
   concentration: ConcentrationMetrics;
   portfolioVol: number | null;
+}
+
+export interface BuildRiskDecompositionInput {
+  tickers: string[];
+  weights?: number[] | null;
+  covariance?: number[][];
+  vols?: number[];
+  positionReturns?: number[];
+  periodsPerYear?: number;
 }
 
 export interface PeriodReturn {
@@ -231,6 +241,7 @@ export const rollingStatsWithBeta = (
       rSlice.reduce((s, v) => s + (v - avg) * (v - avg), 0) /
         (rSlice.length || 1)
     );
+    const volAnn = vol * Math.sqrt(252);
     const sharpe = vol ? (avg / vol) * Math.sqrt(252) : 0;
     let beta: number | null = null;
     if (benchmark && benchmark.length === returns.length) {
@@ -244,7 +255,7 @@ export const rollingStatsWithBeta = (
         (bSlice.length || 1);
       beta = bVar ? cov / bVar : null;
     }
-    out.push({ date: dates[i], vol, sharpe, beta });
+    out.push({ date: dates[i], vol, volAnn, sharpe, beta });
   }
   return out;
 };
@@ -264,100 +275,150 @@ export const relativePerformanceSeries = (
     }));
 };
 
-const normalizeWeights = (weights: number[] | undefined | null) => {
-  if (!weights || !weights.length) return null;
-  const sum = weights.reduce((s, w) => s + w, 0);
-  if (sum === 0) return null;
-  return weights.map((w) => w / sum);
-};
+/**
+ * Compute a risk decomposition for a portfolio using variance-share (Euler) contributions.
+ *
+ * - riskContribution: fraction of total portfolio variance contributed by each position
+ *   (numbers in [0,1] that sum to 1 when covariance is valid/positive-definite).
+ * - returnContribution: fraction of total portfolio return contributed by each position;
+ *   may be negative if a position detracts from performance.
+ * - portfolioVol: per-period portfolio volatility; null if covariance is missing/invalid.
+ * - concentration.hhi: Herfindahl–Hirschman index of weights (0–1).
+ * - concentration.topNWeightPct: fraction of weight in the top 5 positions (0–1).
+ */
+export const buildRiskDecomposition = (input: BuildRiskDecompositionInput): RiskDecomposition | null => {
+  const { tickers, weights, covariance, vols, positionReturns, periodsPerYear = 252 } = input;
 
-const portfolioVariance = (weights: number[], cov: number[][]) => {
-  const n = weights.length;
-  let variance = 0;
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      variance += weights[i] * cov[i]?.[j] * weights[j];
-    }
-  }
-  return variance;
-};
-
-export const buildRiskDecomposition = ({
-  tickers,
-  weights,
-  covariance,
-  vols,
-  positionReturns,
-}: {
-  tickers: string[];
-  weights?: number[] | null;
-  covariance?: number[][];
-  vols?: number[];
-  positionReturns?: number[];
-}): RiskDecomposition | null => {
-  const w = normalizeWeights(weights);
-  if (!w) {
+  const n = tickers.length;
+  if (!n) {
     return {
       positionContributions: [],
       concentration: { hhi: null, topNWeightPct: null, topNTickers: [] },
       portfolioVol: null,
     };
   }
-  const n = w.length;
-  const cov =
-    covariance && covariance.length === n && covariance.every((row) => row.length === n)
-      ? covariance
-      : vols && vols.length === n
-      ? vols.map((v, i) =>
-          Array.from({ length: n }, (_, j) => (i === j ? v * v : 0))
-        )
-      : Array.from({ length: n }, (_, i) =>
-          Array.from({ length: n }, (_, j) => (i === j ? w[i] * w[i] : 0))
-        );
 
-  const portVar = portfolioVariance(w, cov);
-  const mc = Array.from({ length: n }, () => 0);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      mc[i] += cov[i][j] * w[j];
-    }
+  const normalizedWeights = (() => {
+    if (!weights || !weights.length || weights.length !== n) return null;
+    const sum = weights.reduce((s, w) => s + w, 0);
+    if (!Number.isFinite(sum) || sum <= 0) return null;
+    return weights.map((w) => w / sum);
+  })();
+
+  const neutral = (): RiskDecomposition => ({
+    positionContributions: tickers.map((t, i) => ({
+      ticker: t,
+      weight: normalizedWeights?.[i] ?? 0,
+      riskContribution: null,
+      returnContribution: null,
+    })),
+    concentration: buildConcentration(normalizedWeights, tickers),
+    portfolioVol: null,
+  });
+
+  if (!normalizedWeights) {
+    return {
+      positionContributions: [],
+      concentration: { hhi: null, topNWeightPct: null, topNTickers: [] },
+      portfolioVol: null,
+    };
   }
+
+  const covMatrix = buildCovariance(normalizedWeights, covariance, vols);
+  if (!covMatrix) {
+    return neutral();
+  }
+
+  const portVar = portfolioVariance(normalizedWeights, covMatrix);
+  if (!Number.isFinite(portVar) || portVar <= 0) {
+    return neutral();
+  }
+
+  const mc = marginalContributions(normalizedWeights, covMatrix);
+  const rawRiskContribs = mc.map((m, i) => (normalizedWeights[i] * m) / portVar);
+  const clipped = rawRiskContribs.map((rc) => Math.max(0, rc));
+  const sumClipped = clipped.reduce((s, v) => s + v, 0);
   const riskContribs =
-    portVar > 0
-      ? mc.map((m, i) => (w[i] * m) / portVar)
-      : Array.from({ length: n }, () => null);
+    sumClipped > 0 ? clipped.map((rc) => rc / sumClipped) : Array.from({ length: n }, () => null);
 
-  const totalReturn =
-    positionReturns && positionReturns.length === n
-      ? positionReturns.reduce((s, r, i) => s + r * (weights?.[i] ?? w[i] ?? 0), 0)
-      : null;
-
-  const returnContribs =
-    totalReturn && totalReturn !== 0 && positionReturns && positionReturns.length === n
-      ? positionReturns.map((r, i) => ((weights?.[i] ?? w[i]) * r) / totalReturn)
-      : Array.from({ length: n }, () => null);
+  const retContribs = (() => {
+    if (!positionReturns || positionReturns.length !== n) return Array.from({ length: n }, () => null as number | null);
+    const totalRet = positionReturns.reduce((s, r, i) => s + normalizedWeights[i] * r, 0);
+    if (!Number.isFinite(totalRet) || Math.abs(totalRet) < 1e-12) {
+      return Array.from({ length: n }, () => null as number | null);
+    }
+    return positionReturns.map((r, i) => (normalizedWeights[i] * r) / totalRet);
+  })();
 
   const positionContributions: RiskContribution[] = tickers.map((t, i) => ({
     ticker: t,
-    weight: w[i] ?? 0,
+    weight: normalizedWeights[i] ?? 0,
     riskContribution: riskContribs[i] ?? null,
-    returnContribution: returnContribs[i] ?? null,
+    returnContribution: retContribs[i] ?? null,
   }));
 
-  const hhi = w.reduce((s, wi) => s + wi * wi, 0);
-  const sorted = [...positionContributions].sort((a, b) => (b.weight || 0) - (a.weight || 0));
-  const topN = sorted.slice(0, Math.min(5, sorted.length));
-  const topNWeightPct = topN.reduce((s, row) => s + row.weight, 0);
+  const portVol = Math.sqrt(portVar);
+  // Optional annualized volatility (not returned): const portVolAnn = portVol * Math.sqrt(periodsPerYear);
 
   return {
     positionContributions,
-    concentration: {
-      hhi,
-      topNWeightPct,
-      topNTickers: topN.map((r) => r.ticker),
-    },
-    portfolioVol: portVar > 0 ? Math.sqrt(portVar) : null,
+    concentration: buildConcentration(normalizedWeights, tickers),
+    portfolioVol: Number.isFinite(portVol) ? portVol : null,
   };
+};
+
+const buildCovariance = (
+  weights: number[],
+  covariance?: number[][],
+  vols?: number[]
+): number[][] | null => {
+  const n = weights.length;
+  if (covariance && covariance.length === n && covariance.every((row) => row.length === n)) {
+    return covariance;
+  }
+  if (vols && vols.length === n) {
+    return vols.map((v, i) =>
+      Array.from({ length: n }, (_, j) => (i === j ? v * v : 0))
+    );
+  }
+  return null;
+};
+
+const portfolioVariance = (weights: number[], cov: number[][]): number => {
+  const n = weights.length;
+  let variance = 0;
+  for (let i = 0; i < n; i++) {
+    const wi = weights[i];
+    for (let j = 0; j < n; j++) {
+      variance += wi * cov[i]?.[j] * weights[j];
+    }
+  }
+  return variance;
+};
+
+const marginalContributions = (weights: number[], cov: number[][]): number[] => {
+  const n = weights.length;
+  const mc = Array.from({ length: n }, () => 0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      mc[i] += cov[i][j] * weights[j];
+    }
+  }
+  return mc;
+};
+
+const buildConcentration = (weights: number[] | null, tickers: string[]): ConcentrationMetrics => {
+  if (!weights || !weights.length) {
+    return { hhi: null, topNWeightPct: null, topNTickers: [] };
+  }
+  const hhi = weights.reduce((s, w) => s + w * w, 0);
+  const sorted = tickers
+    .map((t, i) => ({ t, w: weights[i] ?? 0 }))
+    .sort((a, b) => b.w - a.w);
+  const top = sorted.slice(0, Math.min(5, sorted.length));
+  const topNWeightPct = top.reduce((s, row) => s + row.w, 0);
+  const topNTickers = top.map((row) => row.t);
+  return { hhi, topNWeightPct, topNTickers };
 };
 
 export const aggregatePeriodReturns = (
