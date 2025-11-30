@@ -1,47 +1,66 @@
+const DEFAULT_API_BASE = "http://localhost:8000";
+
 const inferBaseUrl = () => {
+  // Prefer explicit env override; otherwise fall back to local FastAPI in dev.
   const envBase = import.meta.env.VITE_API_BASE_URL?.trim();
   if (envBase) return envBase;
-  if (typeof window === "undefined") return "http://127.0.0.1:8000";
-  const { protocol, hostname, port } = window.location;
-  // If we're behind nginx (e.g., port 4173) we can often just use same-origin proxy.
-  const sameOriginCandidate = window.location.origin;
-  if (port === "4173" || port === "" || port === "80") {
-    return sameOriginCandidate;
-  }
-  // Local dev (Vite on 5173) should talk to localhost:8000 directly.
-  return `${protocol}//${hostname}:8000`;
+  if (typeof window === "undefined") return DEFAULT_API_BASE;
+  const { protocol, hostname } = window.location;
+  const host = hostname === "0.0.0.0" ? "localhost" : hostname;
+  return `${protocol}//${host}:8000`;
 };
 
-const baseUrl = inferBaseUrl().replace(/\/$/, "");
+export const apiBaseUrl = inferBaseUrl().replace(/\/$/, "");
+
+export class ApiClientError extends Error {
+  status?: number;
+  url: string;
+  details?: unknown;
+  isNetworkError: boolean;
+
+  constructor(message: string, options: { url: string; status?: number; details?: unknown; isNetworkError?: boolean }) {
+    super(message);
+    this.name = "ApiClientError";
+    this.url = options.url;
+    this.status = options.status;
+    this.details = options.details;
+    this.isNetworkError = Boolean(options.isNetworkError);
+  }
+}
 
 const normalizeError = async (res: Response) => {
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     try {
       const data = await res.json();
-      if ((data as any)?.detail) return `${res.status} ${res.statusText}: ${(data as any).detail}`;
-      return `${res.status} ${res.statusText}: ${JSON.stringify(data)}`;
+      if ((data as any)?.detail) {
+        return { message: `${res.status} ${res.statusText}: ${(data as any).detail}`, details: data };
+      }
+      return { message: `${res.status} ${res.statusText}: ${JSON.stringify(data)}`, details: data };
     } catch {
       /* fall through */
     }
   }
   const text = await res.text();
-  return text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`;
+  return { message: text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}` };
 };
 
 const handleRequest = async <T>(path: string, init: RequestInit) => {
+  const url = `${apiBaseUrl}${path}`;
   try {
-    const res = await fetch(`${baseUrl}${path}`, init);
+    const res = await fetch(url, init);
     if (!res.ok) {
-      const msg = await normalizeError(res);
-      throw new Error(msg);
+      const { message, details } = await normalizeError(res);
+      throw new ApiClientError(message, { url, status: res.status, details });
     }
     return (await res.json()) as T;
   } catch (err: any) {
-    if (err?.name === "TypeError" && err?.message?.toLowerCase().includes("fetch")) {
-      throw new Error(`Network error. Check backend (${baseUrl}), CORS, or if the server is running.`);
-    }
-    throw err;
+    if (err instanceof ApiClientError) throw err;
+    const isNetwork = err?.name === "TypeError" || err?.isNetworkError;
+    const message = isNetwork
+      ? `Unable to reach the API at ${apiBaseUrl}. Verify the FastAPI backend is running and CORS allows this origin.`
+      : err?.message || "Request failed";
+    throw new ApiClientError(message, { url, isNetworkError: isNetwork });
   }
 };
 

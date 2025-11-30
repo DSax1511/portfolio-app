@@ -14,7 +14,7 @@ const formatCurrency = (v) =>
         maximumFractionDigits: 0,
       });
 
-const AllocationPage = ({ portfolio = [], demoMode = false }) => {
+const AllocationRebalancePage = ({ portfolio = [], demoMode = false }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -68,8 +68,8 @@ const AllocationPage = ({ portfolio = [], demoMode = false }) => {
 
   return (
     <PageShell
-      title="Portfolio Management – Allocation"
-      subtitle="Weights, exposures, and rebalance planning."
+      title="Allocation & Rebalance"
+      subtitle="Current weights vs targets, drift, and turnover needed to realign the book."
       section="Portfolio Intelligence"
     >
       <div className="page-layout" style={{ width: "100%", gap: "1rem" }}>
@@ -86,7 +86,16 @@ const AllocationPage = ({ portfolio = [], demoMode = false }) => {
               <div style={{ minHeight: 260 }}>
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                    <Pie
+                      data={chartData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      labelLine={false}
+                      label={false}
+                    >
                       {chartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
@@ -171,4 +180,4 @@ const AllocationPage = ({ portfolio = [], demoMode = false }) => {
   );
 };
 
-export default AllocationPage;
+export default AllocationRebalancePage;

@@ -37,6 +37,7 @@ def compute_indicator(series: pd.Series, spec: IndicatorSpec) -> pd.Series:
         ema_slow = series.ewm(span=slow, adjust=False).mean()
         macd_line = ema_fast - ema_slow
         signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+        # MACD histogram (line - signal)
         return macd_line - signal_line
     if indicator == "bollinger":
         window = spec.window or 20
@@ -72,6 +73,9 @@ def evaluate_strategy_rules(price: pd.Series, rules: List[StrategyRule], stop_lo
         return series
 
     for i, dt in enumerate(price.index):
+        prev_pos = position.iloc[i - 1] if i > 0 else 0.0
+        position.iloc[i] = prev_pos
+
         for rule in rules:
             left = get_series(rule.left)
             right_series = get_series(rule.right) if rule.right else None
@@ -96,20 +100,18 @@ def evaluate_strategy_rules(price: pd.Series, rules: List[StrategyRule], stop_lo
             if condition:
                 position.iloc[i] = 1.0 if rule.action == "long" else 0.0
 
-        if i > 0 and position.iloc[i] == 0 and position.iloc[i - 1] == 1:
+        if prev_pos == 0 and position.iloc[i] == 1:
             entry_price = price.iloc[i]
-        if position.iloc[i] == 0 and i > 0:
-            position.iloc[i] = position.iloc[i - 1]
+        elif prev_pos == 1 and position.iloc[i] == 0:
+            entry_price = None
 
-        if position.iloc[i] == 1:
-            if entry_price is None:
-                entry_price = price.iloc[i]
+        if position.iloc[i] == 1 and entry_price is not None:
             change = (price.iloc[i] - entry_price) / entry_price
             if stop_loss is not None and change <= -abs(stop_loss):
-                position.iloc[i] = 0
+                position.iloc[i] = 0.0
                 entry_price = None
             elif take_profit is not None and change >= abs(take_profit):
-                position.iloc[i] = 0
+                position.iloc[i] = 0.0
                 entry_price = None
 
     return position
@@ -129,19 +131,21 @@ def apply_rebalance(returns: pd.DataFrame, weights: List[float], frequency: Opti
     port_returns = []
     turnover_series = []
     current_weights = target_weights.copy()
-    rebalance_dates = set(returns.resample(freq_map[frequency]).asfreq().index)
+    rebalance_dates = set(returns.resample(freq_map[frequency]).last().index)
 
     for date, daily in returns.iterrows():
-        if date in rebalance_dates and returns.index.get_loc(date) != 0:
-            turnover = (current_weights - target_weights).abs().sum()
-            cost = (cost_bps / 10000) * turnover
-            turnover_series.append(float(turnover))
-            port_returns.append(float(-cost))
-            current_weights = target_weights.copy()
-        else:
-            turnover_series.append(0.0)
+        cost = 0.0
+        turnover = 0.0
 
-        port_returns.append(float(daily.dot(current_weights)))
+        if date in rebalance_dates and returns.index.get_loc(date) != 0:
+            turnover = float((current_weights - target_weights).abs().sum())
+            cost = (cost_bps / 10000.0) * turnover
+            current_weights = target_weights.copy()
+
+        daily_ret = float(daily.dot(current_weights)) - cost
+        port_returns.append(daily_ret)
+        turnover_series.append(turnover)
+
         gross = (1 + daily) * current_weights
         total = gross.sum()
         if total != 0:
@@ -176,12 +180,28 @@ def run_momentum(prices: pd.DataFrame, lookback: int = 126, top_n: int = 3, reba
     rets = prices.pct_change().dropna()
     period_returns = prices / prices.shift(lookback) - 1
     period_returns = period_returns.dropna()
-    signals = pd.DataFrame(0.0, index=period_returns.index, columns=period_returns.columns)
-    for dt in period_returns.index:
-        top = period_returns.loc[dt].nlargest(min(top_n, len(period_returns.columns)))
-        signals.loc[dt, top.index] = 1.0 / len(top)
-    signals = signals.resample("D").ffill().reindex(rets.index).fillna(0)
-    portfolio_rets = (signals.shift(1).fillna(0) * rets).sum(axis=1)
+    rebalance = (rebalance or "monthly").lower()
+    freq_map = {"daily": "D", "monthly": "M", "quarterly": "Q", "annual": "A"}
+    if rebalance not in freq_map:
+        rebalance = "monthly"
+
+    weights = pd.DataFrame(0.0, index=pd.Index([], dtype=period_returns.index.dtype), columns=period_returns.columns)
+    source = period_returns if rebalance == "daily" else period_returns.resample(freq_map[rebalance]).last()
+
+    for dt, row in source.iterrows():
+        row_clean = row.dropna()
+        if row_clean.empty:
+            continue
+        top = row_clean.nlargest(min(top_n, len(row_clean)))
+        if top.empty:
+            continue
+        weights.loc[dt, :] = 0.0
+        weights.loc[dt, top.index] = 1.0 / len(top)
+
+    weights = weights.sort_index()
+    weights = weights.reindex(period_returns.index).ffill().fillna(0.0)
+    weights = weights.reindex(rets.index).ffill().fillna(0.0)
+    portfolio_rets = (weights.shift(1).fillna(0) * rets).sum(axis=1)
     return portfolio_rets
 
 
@@ -204,6 +224,7 @@ def run_mean_reversion(prices: pd.DataFrame, window: int = 14, threshold: float 
     for col in prices.columns:
         rsi = compute_indicator(prices[col], IndicatorSpec(indicator="rsi", window=window))
         rsi = rsi.reindex(rets.index)
+        # Cap weights at 1/n assets and allow remaining allocation to sit in cash.
         weights.loc[rsi < threshold, col] = 1.0 / len(prices.columns)
         weights.loc[rsi > (100 - threshold), col] = 0
     weights = weights.fillna(method="ffill").fillna(0)

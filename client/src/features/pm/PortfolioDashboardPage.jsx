@@ -8,6 +8,7 @@ import EmptyState from "../../components/ui/EmptyState";
 import PositionsTable from "../../components/ui/PositionsTable";
 import SectorExposurePanel from "./SectorExposurePanel";
 import { portfolioApi } from "../../services/portfolioApi";
+import { apiBaseUrl } from "../../services/apiClient";
 import { formatDateTick } from "../../utils/format";
 
 const COLORS = ["#4f46e5", "#22c55e", "#f97316", "#06b6d4", "#a855f7", "#e11d48"];
@@ -37,7 +38,55 @@ const yearsAgo = (yrs) => {
   return d.toISOString().slice(0, 10);
 };
 
-const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, demoMode }) => {
+const buildDemoBacktest = () => {
+  const points = 180;
+  const baseDate = new Date();
+  const dates = [];
+  const portfolio_equity = [];
+  const benchmark_equity = [];
+  let port = 1;
+  let bench = 1;
+
+  for (let i = points - 1; i >= 0; i -= 1) {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+    const portRet = 0.0008 + 0.0004 * Math.sin(i / 14);
+    const benchRet = 0.0006 + 0.0003 * Math.cos(i / 16);
+    port *= 1 + portRet;
+    bench *= 1 + benchRet;
+    portfolio_equity.push(port);
+    benchmark_equity.push(bench);
+  }
+
+  const portfolio_returns = portfolio_equity.map((val, idx) =>
+    idx === 0 ? 0 : val / portfolio_equity[idx - 1] - 1
+  );
+  const benchmark_returns = benchmark_equity.map((val, idx) =>
+    idx === 0 ? 0 : val / benchmark_equity[idx - 1] - 1
+  );
+
+  return {
+    dates,
+    portfolio_equity,
+    benchmark_equity,
+    portfolio_returns,
+    benchmark_returns,
+    summary: {
+      cagr: 0.12,
+      benchmark_cagr: 0.1,
+      annualized_volatility: 0.17,
+      sharpe_ratio: 0.85,
+      sortino_ratio: 1.1,
+      max_drawdown: -0.18,
+      beta: 1.02,
+      alpha: 0.015,
+      tracking_error: 0.05,
+    },
+  };
+};
+
+const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, demoMode }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
@@ -222,23 +271,34 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
   useEffect(() => {
     const loadDefaultBacktest = async () => {
       try {
-        const data = await portfolioApi.runPMBacktest({
+        const payload = {
           tickers: ["SPY", "QQQ"],
           weights: [0.5, 0.5],
           start_date: yearsAgo(3),
           end_date: today.toISOString().slice(0, 10),
           rebalance_freq: "monthly",
           benchmark: "SPY",
-        });
+        };
+        // Overview card hits FastAPI /api/v1/pm/backtest (or /demo when in UI demo mode).
+        const data = demoMode ? await portfolioApi.getPMBacktestDemo() : await portfolioApi.runPMBacktest(payload);
         setPmPerf(data);
         setPmPerfError("");
       } catch (err) {
+        console.error("PM backtest request failed", { error: err, url: err?.url, status: err?.status });
+        const friendly = err?.isNetworkError
+          ? `Unable to reach the backtest API. Make sure the backend is running on ${err?.url || apiBaseUrl}.`
+          : err?.message || "Backtest unavailable";
+        if (demoMode) {
+          setPmPerf(buildDemoBacktest());
+          setPmPerfError("");
+          return;
+        }
         setPmPerf(null);
-        setPmPerfError(err.message || "Backtest unavailable");
+        setPmPerfError(friendly);
       }
     };
     loadDefaultBacktest();
-  }, []);
+  }, [demoMode]);
 
   const metricCards = [
     { label: "Total Value", value: placeholderValue ? "—" : `$${formatCurrency(totalValue)}` },
@@ -320,8 +380,8 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
 
   return (
     <PageShell
-      title="Portfolio Overview"
-      subtitle="Live snapshot of value, P&L, exposures, and daily focus."
+      title="Portfolio Dashboard"
+      subtitle="Live portfolio value, P&L, exposures, and daily focus for today's book."
     >
       {!hasPortfolio && (
         <EmptyState
@@ -338,7 +398,7 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
         </div>
       </div>
 
-      <Card title="Portfolio backtest vs SPY" subtitle="Default equal-weight SPY/QQQ, monthly rebalance">
+      <Card title="Portfolio equity vs SPY" subtitle="Live curve normalized to 1.0 at start">
         {pmPerf ? (
           <div className="analytics-grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
             <div style={{ minHeight: 220 }}>
@@ -620,4 +680,4 @@ const OverviewPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, 
   );
 };
 
-export default OverviewPage;
+export default PortfolioDashboardPage;

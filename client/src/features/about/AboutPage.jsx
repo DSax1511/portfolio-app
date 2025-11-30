@@ -17,6 +17,20 @@ const AboutPage = () => {
           />
         </div>
 
+        <Card title="Project links" subtitle="Resources">
+          <div className="flex flex-wrap gap-3 mt-2">
+            <a className="btn btn-ghost" href="https://github.com/DSax1511">
+              View GitHub
+            </a>
+            <a className="btn btn-ghost" href="/resume.pdf">
+              Download Resume
+            </a>
+            <a className="btn btn-ghost" href="/whitepaper.pdf">
+              Read Project Whitepaper
+            </a>
+          </div>
+        </Card>
+
         <div className="about-grid">
           <Card title="What this app does" subtitle="Feature set">
             <ul className="simple-list">

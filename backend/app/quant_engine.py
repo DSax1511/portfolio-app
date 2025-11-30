@@ -58,7 +58,8 @@ def _signals(prices: pd.Series, cfg) -> pd.Series:
 def _apply_execution(prices: pd.Series, signals: pd.Series, cfg: QuantBacktestRequest) -> Tuple[pd.Series, List[Trade]]:
   equity = cfg.strategy.initial_capital
   cash = equity
-  position = 0.0  # shares
+  position = 0.0  # signed shares
+  entry_price: float | None = None
   trades: List[Trade] = []
   prev_equity = equity
   returns = []
@@ -81,27 +82,65 @@ def _apply_execution(prices: pd.Series, signals: pd.Series, cfg: QuantBacktestRe
     if abs(diff_value) > 1e-8:
       side = 1 if diff_value > 0 else -1
       fill_price = price * (1 + slippage * side)
-      shares = diff_value / fill_price
+      shares = diff_value / max(fill_price, 1e-9)
       cost = shares * fill_price
       commission = cfg.commission_per_trade
       cash -= cost
       cash -= commission
-      position += shares
-      trades.append(
-        Trade(
-          timestamp=dt.strftime("%Y-%m-%d"),
-          side=side_label.get(side, "FLAT"),
-          size=float(shares),
-          price=float(fill_price),
-          pnl=float(-commission),
+
+      # Realized PnL when reducing or flipping an existing position
+      if position != 0 and side != (1 if position > 0 else -1):
+        closing_size = min(abs(shares), abs(position))
+        pnl_per_share = (fill_price - entry_price) if position > 0 else (entry_price - fill_price) if entry_price is not None else 0.0
+        realized = pnl_per_share * closing_size - commission
+        trades.append(
+          Trade(
+            timestamp=dt.strftime("%Y-%m-%d"),
+            side=side_label.get(1 if position > 0 else -1),
+            size=float(closing_size * (1 if position > 0 else -1)),
+            price=float(fill_price),
+            pnl=float(realized),
+          )
         )
-      )
+        position_after = position + shares
+        if abs(position_after) < 1e-8:
+          position = 0.0
+          entry_price = None
+        elif (position > 0 and position_after < 0) or (position < 0 and position_after > 0):
+          position = position_after
+          entry_price = fill_price
+        else:
+          position = position_after  # partial reduce, keep entry_price
+      else:
+        # Opening or adding in same direction
+        prev_position = position
+        position += shares
+        if abs(prev_position) < 1e-8:
+          entry_price = fill_price
+        else:
+          entry_price = ((entry_price or fill_price) * abs(prev_position) + fill_price * abs(shares)) / (abs(prev_position) + abs(shares))
 
     position_value = position * price
     equity = cash + position_value
     ret = (equity - prev_equity) / prev_equity if prev_equity != 0 else 0.0
     returns.append(ret)
     prev_equity = equity
+
+  # Close any open position at the end
+  if position != 0:
+    final_price = prices.iloc[-1]
+    pnl_per_share = (final_price - entry_price) if position > 0 else (entry_price - final_price) if entry_price is not None else 0.0
+    closing_size = abs(position)
+    realized = pnl_per_share * closing_size - cfg.commission_per_trade
+    trades.append(
+      Trade(
+        timestamp=prices.index[-1].strftime("%Y-%m-%d"),
+        side=side_label.get(1 if position > 0 else -1),
+        size=float(position),
+        price=float(final_price),
+        pnl=float(realized),
+      )
+    )
 
   return pd.Series(returns, index=prices.index), trades
 

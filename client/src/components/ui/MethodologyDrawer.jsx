@@ -39,6 +39,31 @@ const MethodologyDrawer = ({ open, onClose }) => {
         body: "60-day rolling window for vol (annualized), Sharpe (rf≈0), and beta vs benchmark: beta = cov(port, bench)/var(bench) over the window.",
       },
       {
+        id: "factors",
+        title: "Factor risk",
+        body: "Factor betas estimated via regression of portfolio returns on market + PCA style factors; variance contribution = beta^2 * var(factor) / var(portfolio).",
+      },
+      {
+        id: "correlation",
+        title: "Correlations",
+        body: "Correlation matrix from daily returns across holdings over the selected window; rolling corr uses a 60-day window vs benchmark.",
+      },
+      {
+        id: "var",
+        title: "VaR / CVaR",
+        body: "Parametric VaR assumes normal returns (95%/99%); historical VaR uses empirical quantiles; CVaR is average loss beyond the 95th percentile.",
+      },
+      {
+        id: "attribution",
+        title: "Risk attribution",
+        body: "Contribution to variance = weight * marginal contribution / portfolio variance; summed by ticker and by sector to show dominant risk drivers.",
+      },
+      {
+        id: "distribution",
+        title: "Return distribution",
+        body: "Histogram of daily returns with skew/kurtosis and worst 1D/5D moves to highlight tail behavior.",
+      },
+      {
         id: "risk-concentration",
         title: "Risk & Concentration",
         body: "Weights normalized to 100%. Concentration uses HHI (sum of squared weights) and top 5 weight share; risk contributions based on weights × marginal contribution.",

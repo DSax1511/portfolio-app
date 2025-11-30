@@ -89,7 +89,11 @@ export interface PMBacktestResponse {
     beta: number;
     alpha: number;
     tracking_error: number;
+    total_return?: number;
+    hit_rate?: number;
   };
+  run_id?: string;
+  analytics?: any;
 }
 
 export interface AllocationItem {

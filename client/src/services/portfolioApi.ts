@@ -35,6 +35,7 @@ export const portfolioApi = {
   getPresets: () => apiClient.get<PresetMap>("/api/presets"),
   savePreset: (payload: { name: string; tickers: string[]; weights?: number[] | null }) =>
     apiClient.post<void>("/api/presets", payload),
+  health: () => apiClient.get<{ status: string }>("/api/health"),
 
   // Core analytics
   getPortfolioMetrics: (payload: {
@@ -109,6 +110,28 @@ export const portfolioApi = {
     end_date?: string | null;
   }) => apiClient.post<EfficientFrontierResponse>("/api/efficient-frontier", payload),
 
+  // Unified portfolio analytics
+  getPortfolioAnalytics: (payload: {
+    tickers: string[];
+    quantities?: number[] | null;
+    prices?: number[] | null;
+    benchmark?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+  }) => apiClient.post("/api/v2/portfolio-analytics", payload),
+
+  runBacktestAnalytics: (payload: {
+    tickers: string[];
+    weights?: number[] | null;
+    benchmark?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    rebalance_freq?: string | null;
+  }) => apiClient.post("/api/v2/backtest-analytics", payload),
+
+  getRun: (runId: string) => apiClient.get(`/api/runs/${runId}`),
+  listRuns: (limit = 20) => apiClient.get(`/api/runs?limit=${limit}`),
+
   runQuantBacktest: (payload: {
     strategy: Record<string, any>;
     slippage_bps?: number;
@@ -135,6 +158,7 @@ export const portfolioApi = {
     rebalance_freq?: string | null;
     benchmark?: string | null;
   }) => apiClient.post("/api/v1/pm/backtest", payload),
+  getPMBacktestDemo: () => apiClient.get<PMBacktestResponse>("/api/v1/pm/backtest/demo"),
 
   getPMAllocation: (payload: {
     tickers: string[];

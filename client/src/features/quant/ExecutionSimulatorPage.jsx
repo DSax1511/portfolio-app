@@ -37,7 +37,9 @@ const defaultSettings = {
 };
 
 const parseTime = (t) => {
+  if (!t || typeof t !== "string" || !t.includes(":")) return NaN;
   const [h, m] = t.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return NaN;
   return h * 60 + m;
 };
 
@@ -96,11 +98,14 @@ const computeCorrelation = (xArr, yArr) => {
 const runSimulation = (settings) => {
   const startMin = parseTime(settings.startTime);
   const endMin = parseTime(settings.endTime);
+  if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) {
+    throw new Error("Invalid start/end time for simulation");
+  }
   const rawSpan = Math.max(1, endMin - startMin);
   const steps = Math.max(20, Math.min(120, rawSpan)); // clamp steps to avoid heavy compute
   const timeStep = rawSpan / Math.max(steps - 1, 1);
 
-  const basePrice = 100 + settings.symbol.charCodeAt(0);
+  const basePrice = Math.max(1, 100 + (settings.symbol?.charCodeAt?.(0) || 0));
   const priceSeriesRaw = randomWalkPrices(steps, basePrice, settings.urgency);
   const timeSeries = Array.from({ length: steps }, (_, i) => {
     const t = startMin + i * timeStep;
@@ -270,6 +275,7 @@ const ExecutionSimulatorPage = () => {
   const [settings, setSettings] = useState(defaultSettings);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (key) => (e) => {
     const value = e.target.type === "number" ? Number(e.target.value) : e.target.value;
@@ -286,30 +292,45 @@ const ExecutionSimulatorPage = () => {
   };
 
   const handleRun = () => {
+    setError("");
     setLoading(true);
     setTimeout(() => {
-      const sim = runSimulation(settings);
-      setResult(sim);
-      setLoading(false);
+      try {
+        const sim = runSimulation(settings);
+        setResult(sim);
+      } catch (e) {
+        setResult(null);
+        setError(e?.message || "Simulation failed. Check inputs and try again.");
+      } finally {
+        setLoading(false);
+      }
     }, 50);
   };
 
   const priceChartData = useMemo(() => {
     if (!result) return [];
     const fillMap = new Map(result.fills.map((f) => [f.t, f]));
-    return result.timeSeries.map((p) => ({
-      ...p,
-      fillPrice: fillMap.get(p.t)?.price,
-      fillSize: fillMap.get(p.t)?.size,
-    }));
+    return result.timeSeries
+      .filter((p) => Number.isFinite(p.mid) && Number.isFinite(p.bid) && Number.isFinite(p.ask))
+      .map((p) => {
+        const fill = fillMap.get(p.t);
+        return {
+          ...p,
+          fillPrice: Number.isFinite(fill?.price) ? fill.price : undefined,
+          fillSize: Number.isFinite(fill?.size) ? fill.size : undefined,
+        };
+      });
   }, [result]);
 
   return (
     <PageShell
       section="Quant Lab"
-      title="Execution simulator"
-      subtitle="Model algorithmic execution quality across venues using market microstructure, slippage, latency, and fill-probability models."
+      title="Execution Lab"
+      subtitle="Simulate order execution, fills, and slippage across venues."
     >
+      <p className="muted" style={{ marginTop: "-4px" }}>
+        Offline simulator using synthetic intraday/microstructure patterns to visualize price path, fills, venue allocation, and impact.
+      </p>
       <div className="analytics-grid" style={{ gridTemplateColumns: "380px 1fr", alignItems: "start" }}>
         <Card title="Simulation settings">
           <div className="analytics-form">
@@ -409,11 +430,35 @@ const ExecutionSimulatorPage = () => {
             <button className="btn btn-primary" type="button" onClick={handleRun} disabled={loading}>
               {loading ? "Running..." : "Run simulation"}
             </button>
+            {error && <p className="error-text" style={{ marginTop: "0.25rem" }}>{error}</p>}
           </div>
         </Card>
 
         <div className="page-layout" style={{ gap: "1rem" }}>
-          <Card title="Price path & fills" subtitle="Mid/bid/ask with fill markers">
+          <Card
+            title="Price path & fills"
+            subtitle="Mid/bid/ask with fill markers"
+            actions={
+              result?.fills?.length ? (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    const header = ["time", "price", "size", "venue", "side"];
+                    const csv = [header.join(","), ...result.fills.map((f) => [f.timeLabel, f.price, f.size, f.venue, f.side].join(","))].join("\n");
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "execution_fills.csv";
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Export fills
+                </button>
+              ) : null
+            }
+          >
             {result ? (
               <div style={{ height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">

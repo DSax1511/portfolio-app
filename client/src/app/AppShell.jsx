@@ -1,51 +1,274 @@
 import { useRef, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import "../App.css";
 import { portfolioApi } from "../services/portfolioApi";
+import { apiBaseUrl } from "../services/apiClient";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import AboutPage from "../features/about/AboutPage";
-import AnalyticsPage from "../features/analytics/AnalyticsPage";
+import RiskDiagnosticsPage from "../features/analytics/RiskDiagnosticsPage";
 import ContactPage from "../features/contact/ContactPage";
 import HomePage from "../features/home/HomePage";
-import OverviewPage from "../features/overview/OverviewPage";
-import AllocationPage from "../features/pm/AllocationPage";
-import BacktestsPage from "../features/pm/BacktestsPage";
-import BacktestEnginePage from "../features/quant/BacktestEnginePage";
+import PortfolioDashboardPage from "../features/pm/PortfolioDashboardPage";
+import AllocationRebalancePage from "../features/pm/AllocationRebalancePage";
+import HistoricalAnalysisPage from "../features/pm/HistoricalAnalysisPage";
 import ExecutionSimulatorPage from "../features/quant/ExecutionSimulatorPage";
 import MicrostructurePage from "../features/quant/MicrostructurePage";
 import RegimesPage from "../features/quant/RegimesPage";
 import StrategyBuilderPage from "../features/quant/StrategyBuilderPage";
-import ResearchHomePage from "../features/research/ResearchHomePage";
-import ResearchNotesPage from "../features/research/ResearchNotesPage";
+import { PortfolioAnalyticsProvider, usePortfolioAnalytics } from "../state/portfolioAnalytics";
+import { QuantLabProvider } from "../state/quantLabStore";
+import { ActiveRunProvider } from "../state/activeRun";
 
-const createDemoPosition = (ticker, description, quantity, avgCost, currentPrice) => {
-  const marketValue = Number((quantity * currentPrice).toFixed(2));
-  const pnl = Number(((currentPrice - avgCost) * quantity).toFixed(2));
-  return {
-    ticker,
-    description,
-    quantity,
-    avg_cost: avgCost,
-    current_price: currentPrice,
-    market_value: marketValue,
-    pnl,
+const DEMO_PORTFOLIOS = [
+  {
+    id: "us_large_cap_quality_tech",
+    name: "US Large-Cap Core (Tech & Quality Tilt)",
+    description:
+      "Concentrated US large-cap portfolio overweighting quality and tech names vs the S&P 500.",
+    holdings: [
+      { symbol: "AAPL", weight: 0.13 },
+      { symbol: "MSFT", weight: 0.13 },
+      { symbol: "GOOGL", weight: 0.08 },
+      { symbol: "AMZN", weight: 0.08 },
+      { symbol: "NVDA", weight: 0.07 },
+      { symbol: "META", weight: 0.06 },
+      { symbol: "BRK.B", weight: 0.08 },
+      { symbol: "JPM", weight: 0.06 },
+      { symbol: "UNH", weight: 0.06 },
+      { symbol: "JNJ", weight: 0.05 },
+      { symbol: "XOM", weight: 0.08 },
+      { symbol: "HD", weight: 0.12 },
+    ],
+  },
+  {
+    id: "global_60_40_multi_asset",
+    name: "Global 60/40 Multi-Asset",
+    description:
+      "Global equity and fixed-income portfolio with US, international, EM, credit, TIPS, and REITs.",
+    holdings: [
+      { symbol: "VTI", weight: 0.3 },
+      { symbol: "VOO", weight: 0.1 },
+      { symbol: "VXUS", weight: 0.15 },
+      { symbol: "VWO", weight: 0.05 },
+      { symbol: "BND", weight: 0.25 },
+      { symbol: "HYG", weight: 0.05 },
+      { symbol: "TIP", weight: 0.05 },
+      { symbol: "VNQ", weight: 0.05 },
+    ],
+  },
+  {
+    id: "all_weather_risk_parity_style",
+    name: "All-Weather / Risk-Parity Style",
+    description: "All-weather style allocation balancing equities, duration, and real assets.",
+    holdings: [
+      { symbol: "VTI", weight: 0.25 },
+      { symbol: "IEF", weight: 0.2 },
+      { symbol: "TLT", weight: 0.25 },
+      { symbol: "SHY", weight: 0.1 },
+      { symbol: "GLD", weight: 0.1 },
+      { symbol: "DBC", weight: 0.1 },
+    ],
+  },
+  {
+    id: "defensive_low_vol_dividend",
+    name: "Defensive Low-Vol / Dividend",
+    description: "Low-volatility and dividend tilt with a meaningful bond sleeve.",
+    holdings: [
+      { symbol: "USMV", weight: 0.3 },
+      { symbol: "SPLV", weight: 0.15 },
+      { symbol: "VIG", weight: 0.2 },
+      { symbol: "XLU", weight: 0.1 },
+      { symbol: "XLV", weight: 0.1 },
+      { symbol: "BND", weight: 0.1 },
+      { symbol: "SHY", weight: 0.05 },
+    ],
+  },
+  {
+    id: "sector_rotation_book",
+    name: "US Sector Rotation Book",
+    description:
+      "Sector-tilted portfolio overweighting technology and cyclicals, underweighting defensives.",
+    holdings: [
+      { symbol: "XLY", weight: 0.12 },
+      { symbol: "XLP", weight: 0.08 },
+      { symbol: "XLE", weight: 0.1 },
+      { symbol: "XLF", weight: 0.1 },
+      { symbol: "XLV", weight: 0.12 },
+      { symbol: "XLI", weight: 0.1 },
+      { symbol: "XLK", weight: 0.18 },
+      { symbol: "XLU", weight: 0.08 },
+      { symbol: "XLB", weight: 0.07 },
+      { symbol: "IYR", weight: 0.05 },
+    ],
+  },
+  {
+    id: "spy_benchmark",
+    name: "SPY Benchmark",
+    description: "Simple 100% S&P 500 benchmark allocation.",
+    holdings: [{ symbol: "SPY", weight: 1.0 }],
+  },
+];
+
+const getRandomDemoNotional = () => {
+  const raw = 70_000 + Math.random() * (1_000_000 - 70_000);
+  return Math.round(raw / 100) * 100;
+};
+
+const priceLookup = {
+  VTI: 219.4,
+  VOO: 523.2,
+  VXUS: 56.8,
+  VWO: 42.1,
+  BND: 71.2,
+  HYG: 78.6,
+  TIP: 107.4,
+  VNQ: 85.6,
+  QQQ: 433.5,
+  VUG: 334.1,
+  XLK: 225.4,
+  USMV: 77.8,
+  SPLV: 68.3,
+  AGG: 98.5,
+  TLT: 94.2,
+  IEF: 94.9,
+  GLD: 188.3,
+  DBC: 23.4,
+  SPY: 520.5,
+  SHY: 82.3,
+  VIG: 175.6,
+  XLU: 67.2,
+  XLV: 154.3,
+  XLY: 188.4,
+  XLP: 73.1,
+  XLE: 95.2,
+  XLF: 40.8,
+  XLI: 120.5,
+  XLB: 82.7,
+  IYR: 89.5,
+  AAPL: 187.3,
+  MSFT: 412.2,
+  GOOGL: 150.4,
+  AMZN: 170.1,
+  NVDA: 780.4,
+  META: 495.7,
+  "BRK.B": 409.2,
+  JPM: 161.7,
+  UNH: 461.1,
+  JNJ: 162.3,
+  XOM: 114.3,
+  HD: 357.4,
+};
+
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+
+const seededRandom = (seedStr) => {
+  let seed = 0;
+  for (let i = 0; i < seedStr.length; i += 1) {
+    seed = (seed << 5) - seed + seedStr.charCodeAt(i);
+    seed |= 0;
+  }
+  return () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return (seed >>> 0) / 4294967296;
   };
 };
 
-const DEMO_PORTFOLIO = [
-  createDemoPosition("AAPL", "Apple Inc.", 150, 165.4, 182.35),
-  createDemoPosition("MSFT", "Microsoft Corp.", 120, 295.8, 327.1),
-  createDemoPosition("AMZN", "Amazon.com Inc.", 90, 118.2, 142.44),
-  createDemoPosition("GOOGL", "Alphabet Class A", 110, 123.5, 138.65),
-  createDemoPosition("NVDA", "NVIDIA Corp.", 60, 390.25, 447.8),
-  createDemoPosition("JPM", "JPMorgan Chase", 140, 145.1, 161.72),
-  createDemoPosition("UNH", "UnitedHealth Group", 45, 480.5, 461.1),
-  createDemoPosition("XOM", "Exxon Mobil", 160, 104.6, 114.3),
-  createDemoPosition("TSLA", "Tesla Inc.", 75, 225.4, 211.9),
-  createDemoPosition("VTI", "Vanguard Total Market ETF", 200, 206.2, 219.4),
-];
+const seededNormal = (rand) => {
+  const u1 = rand() || 1e-9;
+  const u2 = rand();
+  return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+};
+
+// Stylized return scenario engine for demo portfolios.
+// Applies simple, transparent assumptions per demo style to generate per-ticker total returns.
+const buildDemoScenario = (demoId, holdings) => {
+  const profile =
+    {
+      us_large_cap_quality_tech: {
+        mu: 0.16,
+        sigma: 0.12,
+        min: -0.18,
+        max: 0.42,
+        tilts: { NVDA: 0.12, META: 0.06, AMZN: 0.05, AAPL: 0.02, MSFT: 0.02, XOM: -0.02, JNJ: -0.015 },
+      },
+      global_60_40_multi_asset: {
+        mu: 0.08,
+        sigma: 0.05,
+        min: -0.08,
+        max: 0.2,
+        tilts: { BND: -0.015, HYG: -0.005, TIP: 0.0, VTI: 0.01, VOO: 0.01 },
+      },
+      all_weather_risk_parity_style: {
+        mu: 0.07,
+        sigma: 0.04,
+        min: -0.06,
+        max: 0.16,
+        tilts: { TLT: 0.01, IEF: 0.005, SHY: -0.005, GLD: 0.01, DBC: 0.0 },
+      },
+      defensive_low_vol_dividend: {
+        mu: 0.05,
+        sigma: 0.03,
+        min: -0.05,
+        max: 0.12,
+        tilts: { USMV: 0.01, SPLV: 0.005, VIG: 0.008, XLU: 0.0, XLV: 0.0, BND: -0.01 },
+      },
+      sector_rotation_book: {
+        mu: 0.1,
+        sigma: 0.12,
+        min: -0.2,
+        max: 0.35,
+        tilts: { XLK: 0.08, XLY: 0.04, XLP: -0.02, XLU: -0.04, XLE: 0.01, XLB: 0.0 },
+      },
+      spy_benchmark: {
+        mu: 0.09,
+        sigma: 0.04,
+        min: -0.08,
+        max: 0.25,
+        tilts: {},
+      },
+    }[demoId] || { mu: 0.06, sigma: 0.05, min: -0.1, max: 0.2, tilts: {} };
+
+  const rand = seededRandom(demoId);
+  const returnsByTicker = {};
+
+  holdings.forEach((h, idx) => {
+    const base = profile.mu + seededNormal(rand) * profile.sigma;
+    const tilt = profile.tilts[h.symbol] || 0;
+    const noise = seededNormal(rand) * profile.sigma * 0.15;
+    const r = clamp(base + tilt + noise, profile.min, profile.max);
+    const lossBias = rand() < 0.2 ? -Math.abs(r * 0.4) : 0;
+    const finalReturn = clamp(r + lossBias / (idx + 2), profile.min, profile.max);
+    returnsByTicker[h.symbol] = finalReturn;
+  });
+
+  return returnsByTicker;
+};
+
+const buildDemoPositions = (demo, baseValue) => {
+  const totalNotional = baseValue || 100000;
+  const returns = buildDemoScenario(demo.id, demo.holdings);
+  return demo.holdings.map((h, idx) => {
+    const price = priceLookup[h.symbol] || 100;
+    const targetValue = totalNotional * h.weight;
+    const quantity = Number((targetValue / price).toFixed(4));
+    const current_price = price;
+    const assumedReturn = returns[h.symbol] ?? 0.05;
+    const avg_cost = Number((current_price / (1 + assumedReturn)).toFixed(4));
+    const market_value = Number((quantity * current_price).toFixed(2));
+    const pnl = Number((market_value - quantity * avg_cost).toFixed(2));
+    return {
+      ticker: h.symbol,
+      description: h.symbol,
+      quantity,
+      avg_cost,
+      current_price,
+      market_value,
+      pnl,
+    };
+  });
+};
 
 const formatCurrency = (n) =>
   n.toLocaleString(undefined, {
@@ -53,18 +276,68 @@ const formatCurrency = (n) =>
     minimumFractionDigits: 2,
   });
 
+const PortfolioFilters = () => {
+  const { benchmark, setBenchmark, dateRange, setDateRange } = usePortfolioAnalytics();
+  const presets = ["1Y", "3Y", "5Y", "MAX"];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1">
+        <span className="label-sm">Date range</span>
+        {presets.map((p) => (
+          <button
+            key={p}
+            className={`btn btn-ghost ${dateRange.preset === p ? "btn-primary" : ""}`}
+            style={{ padding: "6px 10px", fontSize: "12px" }}
+            onClick={() => setDateRange({ preset: p, startDate: null, endDate: null })}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1">
+        <span className="label-sm">Benchmark</span>
+        <select
+          value={benchmark}
+          onChange={(e) => setBenchmark(e.target.value)}
+          style={{ width: 120 }}
+        >
+          <option value="SPY">SPY</option>
+          <option value="QQQ">QQQ</option>
+          <option value="IWM">IWM</option>
+          <option value="ACWI">ACWI</option>
+        </select>
+      </div>
+    </div>
+  );
+};
+
 const AppContent = () => {
-  const [portfolio, setPortfolio] = useState([]);
+  const {
+    positions: portfolio,
+    setPositions,
+  } = usePortfolioAnalytics();
   const [savedPortfolio, setSavedPortfolio] = useState([]);
   const [positionsFile, setPositionsFile] = useState(null);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [demoMode, setDemoMode] = useState(false);
+  const [activeDemo, setActiveDemo] = useState(null);
+  const [demoMenuOpen, setDemoMenuOpen] = useState(false);
+  const [latestRiskPayload, setLatestRiskPayload] = useState(null);
+  const demoNotionalsRef = useRef(null);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isPortfolioRoute = location.pathname.startsWith("/pm");
+
+  if (demoNotionalsRef.current === null) {
+    demoNotionalsRef.current = DEMO_PORTFOLIOS.reduce((acc, demo) => {
+      acc[demo.id] = getRandomDemoNotional();
+      return acc;
+    }, {});
+  }
 
   const uploadPositions = async (fileOverride = null) => {
-    if (demoMode) return;
     const fileToUse = fileOverride || positionsFile;
     if (!fileToUse) return;
 
@@ -74,12 +347,16 @@ const AppContent = () => {
     formData.append("file", fileToUse);
 
     try {
+      if (demoMode) {
+        setDemoMode(false);
+        setActiveDemo(null);
+      }
       const data = await portfolioApi.uploadPositions(formData);
-      setPortfolio(data);
+      setPositions(data);
     } catch (err) {
       console.error("Positions upload error:", err);
-      const msg = err?.message?.includes("Failed to fetch")
-        ? "Could not reach the API. Make sure the backend is running (localhost:8000) or set VITE_API_BASE_URL."
+      const msg = err?.isNetworkError
+        ? `Could not reach the API. Make sure the backend is running (${err?.url || apiBaseUrl}) or set VITE_API_BASE_URL.`
         : err.message || "Positions upload failed. Confirm the API is reachable.";
       setUploadError(msg);
     } finally {
@@ -87,20 +364,27 @@ const AppContent = () => {
     }
   };
 
-  const toggleDemoPortfolio = () => {
+  const loadDemoPortfolio = (demo) => {
     if (!demoMode) {
       setSavedPortfolio(portfolio);
-      setPortfolio(DEMO_PORTFOLIO);
-      setPositionsFile(null);
-      setUploadError("");
-      setDemoMode(true);
-      setPositionsLoading(false);
-      navigate("/pm/overview");
-      return;
     }
-    setPortfolio(savedPortfolio);
-    setDemoMode(false);
-    navigate("/pm/overview");
+    const baseValue = demoNotionalsRef.current?.[demo.id] || 100000;
+    setPositions(buildDemoPositions(demo, baseValue));
+    setPositionsFile(null);
+    setUploadError("");
+    setDemoMode(true);
+    setActiveDemo(demo.id);
+    setPositionsLoading(false);
+    navigate("/pm/dashboard");
+  };
+
+  const toggleDemoPortfolio = () => {
+    if (demoMode) {
+      setPositions(savedPortfolio);
+      setDemoMode(false);
+      setActiveDemo(null);
+      navigate("/pm/dashboard");
+    }
   };
 
   const handleFileChange = (e) => {
@@ -122,17 +406,77 @@ const AppContent = () => {
           Portfolio Intelligence
         </div>
         <div className="top-actions">
-          <button
-            className="btn btn-ghost"
-            onClick={toggleDemoPortfolio}
-          >
-            {demoMode ? "Turn off demo" : "Try demo portfolio"}
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setDemoMenuOpen((o) => !o)}
+              title="Load realistic sample portfolios to explore analytics."
+            >
+              Demo portfolios
+            </button>
+            {demoMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  marginTop: 6,
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "12px",
+                  boxShadow: "var(--shadow-lg)",
+                  minWidth: 280,
+                  zIndex: 20,
+                  padding: "8px",
+                }}
+              >
+                {DEMO_PORTFOLIOS.map((demo) => (
+                  <button
+                    key={demo.id}
+                    className="btn btn-ghost"
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      justifyContent: "flex-start",
+                      marginBottom: "6px",
+                      borderColor: demo.id === activeDemo ? "rgba(79,140,255,0.5)" : "var(--border-subtle)",
+                      background: demo.id === activeDemo ? "rgba(79,140,255,0.12)" : "transparent",
+                    }}
+                    onClick={() => {
+                      loadDemoPortfolio(demo);
+                      setDemoMenuOpen(false);
+                    }}
+                    title={demo.description}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span style={{ fontWeight: 700 }}>{demo.name}</span>
+                      <span className="muted" style={{ fontSize: "12px" }}>
+                        {demo.description}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {demoMode && (
+            <button
+              className="btn"
+              onClick={toggleDemoPortfolio}
+              title="Return to your uploaded portfolio."
+              style={{
+                background: "rgba(246,70,93,0.16)",
+                border: "1px solid rgba(246,70,93,0.55)",
+                color: "var(--text-primary)",
+                boxShadow: "0 12px 30px rgba(246,70,93,0.25)",
+              }}
+            >
+              Turn off demo
+            </button>
+          )}
           <button
             className="btn btn-primary"
             onClick={openFilePicker}
-            disabled={demoMode}
-            title={demoMode ? "Turn off demo mode to upload your own file" : undefined}
+            title="Upload a CSV of your own portfolio holdings."
           >
             {positionsLoading ? "Uploading..." : "Upload positions"}
           </button>
@@ -149,14 +493,20 @@ const AppContent = () => {
       <div className="app-body">
         <Sidebar />
         <main className="main-content">
+          {isPortfolioRoute && (
+            <div className="flex items-center justify-between mb-3">
+              <div className="label-sm text-slate-400">Portfolio controls</div>
+              <PortfolioFilters />
+            </div>
+          )}
           <PageLayout>
             <Routes>
               <Route path="/" element={<Navigate to="/home" replace />} />
               <Route path="/home" element={<HomePage />} />
               <Route
-                path="/pm/overview"
+                path="/pm/dashboard"
                 element={
-                  <OverviewPage
+                  <PortfolioDashboardPage
                     portfolio={portfolio}
                     formatCurrency={formatCurrency}
                     onUploadClick={openFilePicker}
@@ -165,18 +515,32 @@ const AppContent = () => {
                   />
                 }
               />
-              <Route path="/overview" element={<Navigate to="/pm/overview" replace />} />
-              <Route path="/pm/allocation" element={<AllocationPage portfolio={portfolio} demoMode={demoMode} />} />
-              <Route path="/pm/backtests" element={<BacktestsPage />} />
-              <Route path="/pm/risk" element={<AnalyticsPage formatCurrency={formatCurrency} />} />
-              <Route path="/analytics" element={<Navigate to="/pm/risk" replace />} />
-              <Route path="/quant/strategy-builder" element={<StrategyBuilderPage />} />
-              <Route path="/quant/backtest-engine" element={<BacktestEnginePage />} />
-              <Route path="/quant/microstructure" element={<MicrostructurePage />} />
+              <Route path="/pm/overview" element={<Navigate to="/pm/dashboard" replace />} />
+              <Route path="/overview" element={<Navigate to="/pm/dashboard" replace />} />
+              <Route
+                path="/pm/allocation-rebalance"
+                element={<AllocationRebalancePage portfolio={portfolio} demoMode={demoMode} />}
+              />
+              <Route path="/pm/allocation" element={<Navigate to="/pm/allocation-rebalance" replace />} />
+              <Route
+                path="/pm/historical-analysis"
+                element={<HistoricalAnalysisPage onRunComplete={setLatestRiskPayload} />}
+              />
+              <Route path="/pm/backtests" element={<Navigate to="/pm/historical-analysis" replace />} />
+              <Route
+                path="/pm/risk-diagnostics"
+                element={<RiskDiagnosticsPage analysisPayload={latestRiskPayload} />}
+              />
+              <Route path="/pm/risk" element={<Navigate to="/pm/risk-diagnostics" replace />} />
+              <Route path="/analytics" element={<Navigate to="/pm/risk-diagnostics" replace />} />
+              <Route path="/quant/strategy-research" element={<StrategyBuilderPage />} />
+              <Route path="/quant/strategy-builder" element={<Navigate to="/quant/strategy-research" replace />} />
+              <Route path="/quant/backtest-engine" element={<Navigate to="/quant/strategy-research" replace />} />
+              <Route path="/quant/market-structure" element={<MicrostructurePage />} />
+              <Route path="/quant/microstructure" element={<Navigate to="/quant/market-structure" replace />} />
               <Route path="/quant/regimes" element={<RegimesPage />} />
-              <Route path="/quant/execution-simulator" element={<ExecutionSimulatorPage />} />
-              <Route path="/research" element={<ResearchHomePage />} />
-              <Route path="/research/notes" element={<ResearchNotesPage />} />
+              <Route path="/quant/execution-lab" element={<ExecutionSimulatorPage />} />
+              <Route path="/quant/execution-simulator" element={<Navigate to="/quant/execution-lab" replace />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
@@ -195,7 +559,13 @@ const AppContent = () => {
 
 const AppShell = () => (
   <BrowserRouter>
-    <AppContent />
+    <ActiveRunProvider>
+      <PortfolioAnalyticsProvider>
+        <QuantLabProvider>
+          <AppContent />
+        </QuantLabProvider>
+      </PortfolioAnalyticsProvider>
+    </ActiveRunProvider>
   </BrowserRouter>
 );
 

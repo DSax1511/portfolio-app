@@ -199,25 +199,16 @@ class RebalanceRequest(BaseModel):
     portfolio_value: float
     prices: List[float]
 
-    @validator("tickers", allow_reuse=True)
-    def normalize_tickers(cls, v: List[str]) -> List[str]:
-        tickers = [t.strip().upper() for t in v if t.strip()]
-        if not tickers:
-            raise ValueError("At least one ticker is required.")
-        return tickers
 
-    @validator("current_weights", "target_weights", "prices", allow_reuse=True)
-    def lengths_match(cls, v: List[float], values: Dict[str, Any], field):  # type: ignore
-        tickers = values.get("tickers") or []
-        if tickers and len(v) != len(tickers):
-            raise ValueError(f"{field.name} length must match tickers length")
-        return v
-
-    @validator("portfolio_value", allow_reuse=True)
-    def positive_portfolio(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("portfolio_value must be positive")
-        return v
+class RunRecord(BaseModel):
+    id: str
+    kind: str
+    timestamp: str
+    params: Dict[str, Any]
+    stats: Dict[str, Any]
+    meta: Optional[Dict[str, Any]] = None
+    dates: Optional[List[str]] = None
+    returns: Optional[List[float]] = None
 
 
 class RebalanceResponse(BaseModel):
@@ -439,6 +430,8 @@ class PMBacktestResponse(BaseModel):
     portfolio_returns: List[float]
     benchmark_returns: List[float]
     summary: Dict[str, float]
+    run_id: Optional[str] = None
+    analytics: Optional[Dict[str, Any]] = None
 
 
 class AllocationItem(BaseModel):

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bar, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, ComposedChart, Cell } from "recharts";
+import { Link } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, ComposedChart, Cell } from "recharts";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 import { portfolioApi } from "../../services/portfolioApi";
@@ -62,10 +63,14 @@ const RegimesPage = () => {
   return (
     <PageShell
       title="Quant Lab – Regimes"
-      subtitle="Volatility/state detection for execution and sizing decisions."
+      subtitle="Detect volatility regimes and study regime-specific performance."
     >
       <div className="page-layout">
-        <Card title="Regime detection" subtitle="Volatility quantiles across history">
+        <Card
+          title="Regime detection"
+          subtitle="Volatility quantiles across history"
+          actions={<Link to="/quant/market-structure" className="text-xs underline-offset-4 hover:underline text-slate-300">Use Market Structure to drill into microstructure metrics →</Link>}
+        >
           <form className="analytics-form" onSubmit={runRegimes}>
             <div className="form-row">
               <label>
@@ -140,7 +145,28 @@ const RegimesPage = () => {
         </Card>
 
         {data && (
-          <Card title="Regime statistics" subtitle="Per-regime performance and risk">
+          <Card
+            title="Regime statistics"
+            subtitle="Per-regime performance and risk"
+            actions={
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  const header = ["regime", "pct_time", "avg_return", "vol", "sharpe", "max_drawdown"];
+                  const csv = [header.join(","), ...data.summary.regimes.map((r) => [r.regime, r.pct_time, r.avg_return, r.vol, r.sharpe, r.max_drawdown].join(","))].join("\n");
+                  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = "regime_stats.csv";
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Export CSV
+              </button>
+            }
+          >
             <div className="stats-grid" style={{ marginBottom: "1rem" }}>
               <div className="stat-box">
                 <p className="metric-label">Overall vol</p>
@@ -176,6 +202,30 @@ const RegimesPage = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div style={{ height: 200, marginTop: "1rem" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={data.summary.regimes.map((r) => ({
+                    regime: `R${r.regime + 1}`,
+                    sharpe: r.sharpe,
+                  }))}
+                >
+                  <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                  <Bar dataKey="sharpe" name="Sharpe" fill="#38bdf8" />
+                  <Tooltip
+                    formatter={(val) => Number(val).toFixed(2)}
+                    contentStyle={{ backgroundColor: "#0b1220", borderColor: "#1f2937" }}
+                  />
+                  <XAxis dataKey="regime" stroke="#6b7280" />
+                  <YAxis stroke="#6b7280" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="muted" style={{ marginTop: "0.5rem" }}>
+              {data.summary.regimes.some((r) => r.sharpe > 1)
+                ? "Lower-vol regimes show better risk-adjusted returns; favor exposure when in Regime 1/2."
+                : "Regimes are balanced; use regime filters cautiously."}
             </div>
           </Card>
         )}

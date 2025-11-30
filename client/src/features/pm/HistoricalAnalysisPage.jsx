@@ -3,8 +3,10 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Ca
 
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
+import ErrorBanner from "../../components/ui/ErrorBanner";
 import { formatDateTick } from "../../utils/format";
-import { portfolioApi } from "../../services/portfolioApi";
+import { usePortfolioAnalytics } from "../../state/portfolioAnalytics";
+import { useActiveRun } from "../../state/activeRun";
 
 const today = new Date();
 const yearsAgo = (yrs) => {
@@ -26,11 +28,10 @@ const metricFormat = (v, pct = false) => {
   return pct ? `${(v * 100).toFixed(2)}%` : v.toFixed(2);
 };
 
-const BacktestsPage = () => {
+const HistoricalAnalysisPage = ({ onRunComplete }) => {
   const [form, setForm] = useState(defaultForm);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
+  const { runBacktestAnalytics, backtestAnalytics, loading, error } = usePortfolioAnalytics();
+  const { setActiveRun } = useActiveRun();
 
   const handleChange = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -51,43 +52,46 @@ const BacktestsPage = () => {
 
   const runBacktest = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const payload = {
-        tickers: parsedTickers,
-        weights: parsedWeights,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        rebalance_freq: form.rebalance_freq,
-        benchmark: "SPY",
-      };
-      const data = await portfolioApi.runPMBacktest(payload);
-      setResult(data);
-    } catch (err) {
-      setError(err.message || "Backtest failed");
-      setResult(null);
-    } finally {
-      setLoading(false);
+    const payload = {
+      tickers: parsedTickers,
+      weights: parsedWeights,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      rebalance_freq: form.rebalance_freq,
+    };
+    const res = await runBacktestAnalytics(payload);
+    const runId = res && res.run_id ? res.run_id : res?.params?.run_id;
+    if (runId) {
+      setActiveRun(runId, `PM ${payload.tickers.join(",")}`);
     }
+    onRunComplete?.({
+      strategy: "buy_and_hold",
+      ...payload,
+      rebalance_frequency: form.rebalance_freq,
+      benchmark: "SPY",
+      parameters: {},
+    });
   };
 
   const chartData = useMemo(() => {
-    if (!result) return [];
-    return result.dates.map((d, i) => ({
+    if (!backtestAnalytics?.equity_curve?.dates) return [];
+    const dates = backtestAnalytics.equity_curve.dates;
+    const equity = backtestAnalytics.equity_curve.equity || [];
+    const bench = backtestAnalytics.benchmark_curve?.equity || [];
+    return dates.map((d, i) => ({
       date: d,
-      portfolio: result.portfolio_equity[i],
-      benchmark: result.benchmark_equity[i],
+      portfolio: equity[i],
+      benchmark: bench[i] ?? null,
     }));
-  }, [result]);
+  }, [backtestAnalytics]);
 
   return (
     <PageShell
-      title="Portfolio Management – Backtests"
-      subtitle="Configure a portfolio, run a benchmarked backtest, and review key stats."
+      title="Historical Analysis"
+      subtitle="Lean backtest control center: configure a scenario, compare to SPY, and review headline stats."
     >
       <div className="analytics-grid">
-        <Card title="Backtest parameters" subtitle="Portfolio, dates, and rebalance">
+        <Card title="Analysis parameters" subtitle="Tickers, dates, weights, and rebalance cadence">
           <form className="analytics-form" onSubmit={runBacktest}>
             <label>
               Tickers (comma-separated)
@@ -117,13 +121,14 @@ const BacktestsPage = () => {
               </select>
             </label>
             <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Running..." : "Run Backtest"}
+              {loading ? "Running..." : "Run analysis"}
             </button>
-            {error && <p className="error-text">{error}</p>}
+            <ErrorBanner message={error} onRetry={runBacktest} />
+            <p className="muted">Backtest outputs feed the Risk & Diagnostics view.</p>
           </form>
         </Card>
 
-        {result ? (
+        {backtestAnalytics ? (
           <Card title="Equity curve vs SPY" subtitle="Normalized to 1.0 at start" className="chart-card">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData} margin={{ left: 12, right: 12, top: 8, bottom: 0 }}>
@@ -148,44 +153,45 @@ const BacktestsPage = () => {
         )}
       </div>
 
-      {result && (
-        <Card title="Summary stats" subtitle="Portfolio vs SPY">
+      {backtestAnalytics && (
+        <Card title="Backtest summary" subtitle="Headline stats vs SPY">
+          {error && <p className="error-text">{error}</p>}
           <div className="stats-grid">
             <div className="stat-box">
               <p className="metric-label">CAGR</p>
-              <div className="metric-value">{metricFormat(result.summary.cagr, true)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.cagr, true)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Benchmark CAGR</p>
-              <div className="metric-value">{metricFormat(result.summary.benchmark_cagr, true)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.benchmark_cagr, true)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Annualized Vol</p>
-              <div className="metric-value">{metricFormat(result.summary.annualized_volatility, true)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.annualized_volatility, true)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Sharpe</p>
-              <div className="metric-value">{metricFormat(result.summary.sharpe_ratio)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.sharpe_ratio)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Sortino</p>
-              <div className="metric-value">{metricFormat(result.summary.sortino_ratio)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.sortino_ratio)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Max Drawdown</p>
-              <div className="metric-value">{metricFormat(result.summary.max_drawdown, true)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.max_drawdown, true)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Beta vs SPY</p>
-              <div className="metric-value">{metricFormat(result.summary.beta)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.beta)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Alpha (ann.)</p>
-              <div className="metric-value">{metricFormat(result.summary.alpha)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.alpha)}</div>
             </div>
             <div className="stat-box">
               <p className="metric-label">Tracking Error</p>
-              <div className="metric-value">{metricFormat(result.summary.tracking_error, true)}</div>
+              <div className="metric-value">{metricFormat(backtestAnalytics.summary?.tracking_error, true)}</div>
             </div>
           </div>
         </Card>
@@ -194,4 +200,4 @@ const BacktestsPage = () => {
   );
 };
 
-export default BacktestsPage;
+export default HistoricalAnalysisPage;

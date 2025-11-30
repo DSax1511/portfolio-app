@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import analytics, backtests, optimizers, commentary
 from .quant_engine import run_quant_backtest
 from .quant_regimes import detect_regimes
+from .analytics_pipeline import portfolio_analytics, backtest_analytics
 from .analytics import (
     attribution_allocation_selection,
     benchmark_compare,
@@ -81,29 +82,35 @@ from .rebalance import position_sizing, suggest_rebalance
 
 app = FastAPI(title="Portfolio Quant API", version="2.0.0")
 
-DEFAULT_ORIGINS = ",".join(
-    [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://0.0.0.0:5173",
-        "http://0.0.0.0:3000",
-    ]
-)
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in (settings.frontend_origins or DEFAULT_ORIGINS).split(",")
-    if origin.strip()
+DEV_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "https://localhost:4173",
+    "https://127.0.0.1:4173",
+    "https://localhost:5173",
+    "https://127.0.0.1:5173",
+    "http://0.0.0.0:4173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://0.0.0.0:5173",
+    "http://0.0.0.0:3000",
 ]
+DEFAULT_ORIGINS = ",".join(DEV_ORIGINS)
+ALLOWED_ORIGINS = sorted(
+    {
+        origin.strip()
+        for origin in (settings.frontend_origins or DEFAULT_ORIGINS).split(",")
+        if origin.strip()
+    }
+)
 
 app.add_middleware(
     CORSMiddleware,
+    # Allow local Vite/Next dev servers; tighten via FRONTEND_ORIGINS in production.
     allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,6 +123,11 @@ if not logger.handlers:
 
 @app.get("/api/health")
 def health_check() -> Dict[str, str]:
+    return {"status": "ok"}
+
+# Friendly root health for infra checks
+@app.get("/health")
+def health_root() -> Dict[str, str]:
     return {"status": "ok"}
 
 
@@ -222,7 +234,7 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
     )
 
 
-def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: Dict[str, Any]) -> str:
+def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> str:
     ts = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     run_id = f"{kind}_{ts}"
     payload = {
@@ -232,7 +244,11 @@ def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: D
         "params": params,
         "stats": stats,
         "equity": returns.head(10).tolist(),  # small slice to keep files light
+        "dates": [d.strftime("%Y-%m-%d") for d in returns.index],
+        "returns": [float(r) for r in returns],
     }
+    if meta:
+        payload["meta"] = meta
     log_run(settings.runs_dir / f"{run_id}.json", payload)
     return run_id
 
@@ -275,6 +291,24 @@ def _pm_summary(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -> D
         "alpha": alpha if alpha is not None else 0.0,
         "tracking_error": tracking_error if tracking_error is not None else 0.0,
     }
+
+
+def _demo_pm_backtest(days: int = 180) -> PMBacktestResponse:
+    rng = np.random.default_rng(42)
+    dates = pd.date_range(end=dt.date.today(), periods=days, freq="B")
+    portfolio_returns = pd.Series(rng.normal(0.0006, 0.01, size=len(dates)), index=dates)
+    benchmark_returns = pd.Series(rng.normal(0.0005, 0.009, size=len(dates)), index=dates)
+    portfolio_equity = (1 + portfolio_returns).cumprod()
+    benchmark_equity = (1 + benchmark_returns).cumprod()
+    summary = _pm_summary(portfolio_returns, benchmark_returns)
+    return PMBacktestResponse(
+        dates=[d.strftime("%Y-%m-%d") for d in dates],
+        portfolio_equity=[float(v) for v in portfolio_equity],
+        benchmark_equity=[float(v) for v in benchmark_equity],
+        portfolio_returns=[float(r) for r in portfolio_returns],
+        benchmark_returns=[float(r) for r in benchmark_returns],
+        summary=summary,
+    )
 
 
 def _allocation_from_payload(request: PMAllocationRequest) -> PMAllocationResponse:
@@ -452,7 +486,25 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
     benchmark_equity = (1 + bench_returns).cumprod()
     dates = [d.strftime("%Y-%m-%d") for d in portfolio_equity.index]
 
-    summary = _pm_summary(portfolio_returns, bench_returns)
+    # Full analytics payload reused for risk/diagnostics
+    analytics_payload = backtest_analytics(
+        request.tickers,
+        weights.tolist(),
+        benchmark_symbol,
+        request.start_date,
+        request.end_date,
+        request.rebalance_freq,
+    )
+    summary = analytics_payload.get("summary", {})
+
+    run_id = _persist_run(
+        "pm_backtest",
+        {"tickers": request.tickers, "weights": weights, "rebalance_freq": request.rebalance_freq or "none", "benchmark": benchmark_symbol},
+        portfolio_returns,
+        summary,
+        meta={"label": f"PM {request.tickers}", "benchmark": benchmark_symbol},
+    )
+    analytics_payload["run_id"] = run_id
 
     return PMBacktestResponse(
         dates=dates,
@@ -461,7 +513,56 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
         portfolio_returns=[float(r) for r in portfolio_returns],
         benchmark_returns=[float(r) for r in bench_returns],
         summary=summary,
+        run_id=run_id,
+        analytics=analytics_payload,
     )
+
+
+@app.get("/api/v1/pm/backtest/demo", response_model=PMBacktestResponse)
+def pm_backtest_demo() -> PMBacktestResponse:
+    """
+    Lightweight demo payload so the UI can render without live market data.
+    """
+    return _demo_pm_backtest()
+
+
+@app.post("/api/v2/portfolio-analytics")
+def v2_portfolio_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
+    tickers = request.get("tickers") or []
+    quantities = request.get("quantities") or [1.0 for _ in tickers]
+    prices = request.get("prices") or [1.0 for _ in tickers]
+    benchmark = request.get("benchmark") or "SPY"
+    start = request.get("start_date")
+    end = request.get("end_date")
+    sectors = request.get("sectors")
+    if not tickers:
+        raise HTTPException(status_code=400, detail="tickers required")
+    return portfolio_analytics(tickers, quantities, prices, benchmark, start, end, sectors)
+
+
+@app.post("/api/v2/backtest-analytics")
+def v2_backtest_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
+    tickers = request.get("tickers") or []
+    weights = request.get("weights")
+    benchmark = request.get("benchmark") or "SPY"
+    start = request.get("start_date")
+    end = request.get("end_date")
+    rebalance_freq = request.get("rebalance_freq")
+    if not tickers:
+        raise HTTPException(status_code=400, detail="tickers required")
+    result = backtest_analytics(tickers, weights, benchmark, start, end, rebalance_freq)
+    try:
+        run_id = _persist_run(
+            "backtest",
+            {"tickers": tickers, "weights": weights, "benchmark": benchmark, "rebalance_freq": rebalance_freq or "none"},
+            pd.Series(result.get("returns") or []),
+            result.get("summary") or {},
+            meta={"label": f"{tickers}", "benchmark": benchmark},
+        )
+        result["run_id"] = run_id
+    except Exception:
+        pass
+    return result
 
 
 @app.post("/api/v1/pm/allocation", response_model=PMAllocationResponse, responses={400: {"model": ApiError}})
@@ -520,6 +621,45 @@ def quant_regimes(request: RegimeRequest) -> RegimeResponse:
 @app.post("/api/v1/quant/microstructure", response_model=MicrostructureResponse, responses={400: {"model": ApiError}})
 def microstructure(request: MicrostructureRequest) -> MicrostructureResponse:
     return compute_microstructure(request)
+
+
+# Runs API (lightweight file-backed history)
+def _load_run(run_id: str) -> Dict[str, Any]:
+    path = settings.runs_dir / f"{run_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    with path.open() as f:
+        return json.load(f)
+
+
+def _list_runs(limit: int = 20) -> List[Dict[str, Any]]:
+    paths = sorted(settings.runs_dir.glob("*.json"), reverse=True)
+    runs: List[Dict[str, Any]] = []
+    for path in paths[:limit]:
+        try:
+          with path.open() as f:
+            runs.append(json.load(f))
+        except Exception:
+          continue
+    return runs
+
+
+@app.get("/api/runs", response_model=List[Dict[str, Any]])
+def list_runs(limit: int = 20) -> List[Dict[str, Any]]:
+    return _list_runs(limit)
+
+
+@app.get("/api/runs/latest", response_model=Dict[str, Any])
+def latest_run() -> Dict[str, Any]:
+    runs = _list_runs(1)
+    if not runs:
+        raise HTTPException(status_code=404, detail="No runs found")
+    return runs[0]
+
+
+@app.get("/api/runs/{run_id}", response_model=Dict[str, Any])
+def get_run(run_id: str) -> Dict[str, Any]:
+    return _load_run(run_id)
 
 
 @app.post("/api/backtest-config", response_model=BacktestResponse, responses={400: {"model": ApiError}})

@@ -7,29 +7,20 @@ export const navSections = [
     id: "portfolio",
     heading: "Portfolio Management",
     items: [
-      { id: "pm-overview", path: "/pm/overview", label: "Overview" },
-      { id: "pm-allocation", path: "/pm/allocation", label: "Allocation" },
-      { id: "pm-backtests", path: "/pm/backtests", label: "Backtests" },
-      { id: "pm-risk", path: "/pm/risk", label: "Risk" },
+      { id: "pm-dashboard", path: "/pm/dashboard", label: "Portfolio Dashboard" },
+      { id: "pm-allocation", path: "/pm/allocation-rebalance", label: "Allocation & Rebalance" },
+      { id: "pm-historical", path: "/pm/historical-analysis", label: "Historical Analysis" },
+      { id: "pm-risk", path: "/pm/risk-diagnostics", label: "Risk & Diagnostics" },
     ],
   },
   {
     id: "quant",
     heading: "Quant Lab",
     items: [
-      { id: "quant-strategy", path: "/quant/strategy-builder", label: "Strategy Builder" },
-      { id: "quant-backtest", path: "/quant/backtest-engine", label: "Backtest Engine" },
-      { id: "quant-micro", path: "/quant/microstructure", label: "Microstructure" },
+      { id: "quant-strategy", path: "/quant/strategy-research", label: "Strategy Research" },
+      { id: "quant-market", path: "/quant/market-structure", label: "Market Structure" },
       { id: "quant-regimes", path: "/quant/regimes", label: "Regimes" },
-      { id: "quant-exec", path: "/quant/execution-simulator", label: "Execution Simulator" },
-    ],
-  },
-  {
-    id: "research",
-    heading: "Research",
-    items: [
-      { id: "research-home", path: "/research", label: "Research Home" },
-      { id: "research-notes", path: "/research/notes", label: "Research Notes" },
+      { id: "quant-exec", path: "/quant/execution-lab", label: "Execution Lab" },
     ],
   },
   {
