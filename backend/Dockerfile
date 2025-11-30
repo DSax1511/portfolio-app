@@ -12,7 +12,9 @@ RUN apt-get update \
 
 # Install Python dependencies first to maximize cache usage
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip for better network resilience and install with sensible retries/timeouts
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --retries 5 --timeout 120 -r requirements.txt
 
 # Copy backend source
 COPY . .

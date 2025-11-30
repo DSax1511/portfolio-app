@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import csv
 import datetime as dt
 import io
@@ -82,38 +83,21 @@ from .rebalance import position_sizing, suggest_rebalance
 
 app = FastAPI(title="Portfolio Quant API", version="2.0.0")
 
-DEV_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+# CORS origins: local dev defaults plus optional FRONTEND_ORIGIN/ADDITIONAL_ORIGIN
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
+ADDITIONAL_ORIGIN = os.getenv("ADDITIONAL_ORIGIN")
+origins = [
     "http://localhost:4173",
-    "http://127.0.0.1:4173",
-    "https://localhost:4173",
-    "https://127.0.0.1:4173",
-    "https://localhost:5173",
-    "https://127.0.0.1:5173",
-    "http://0.0.0.0:4173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://0.0.0.0:5173",
-    "http://0.0.0.0:3000",
+    "http://localhost:5173",
 ]
-DEFAULT_ORIGINS = ",".join(DEV_ORIGINS)
-ALLOWED_ORIGINS = {
-    origin.strip()
-    for origin in (settings.frontend_origins or DEFAULT_ORIGINS).split(",")
-    if origin.strip()
-}
-# Optionally append a Vercel-style hostname if provided (e.g., VERCEL_URL=portfolio-frontend.vercel.app)
-VERCEL_URL = os.getenv("VERCEL_URL")
-if VERCEL_URL:
-    prefixed = VERCEL_URL if VERCEL_URL.startswith("http") else f"https://{VERCEL_URL}"
-    ALLOWED_ORIGINS.add(prefixed.rstrip("/"))
-ALLOWED_ORIGINS = sorted(ALLOWED_ORIGINS)
+if FRONTEND_ORIGIN:
+    origins.append(FRONTEND_ORIGIN)
+if ADDITIONAL_ORIGIN:
+    origins.append(ADDITIONAL_ORIGIN)
 
 app.add_middleware(
     CORSMiddleware,
-    # Allow local Vite/Next dev servers; tighten via FRONTEND_ORIGINS in production.
-    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
