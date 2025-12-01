@@ -18,9 +18,14 @@ import yfinance as yf
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import analytics, backtests, optimizers, commentary
+from . import analytics, backtests, optimizers, commentary, optimizers_v2, covariance_estimation, factor_models
 from .quant_engine import run_quant_backtest
 from .quant_regimes import detect_regimes
+from .quant import (
+    advanced_strategies,
+    risk_analytics,
+    live_trading,
+)
 from .analytics_pipeline import portfolio_analytics, backtest_analytics
 from .analytics import (
     attribution_allocation_selection,
@@ -719,11 +724,24 @@ def monte_carlo(request: MonteCarloRequest) -> Dict[str, Any]:
 
 @app.post("/api/efficient-frontier")
 def efficient_frontier(request: FrontierRequest) -> Dict[str, Any]:
+    """
+    Compute efficient frontier using CVXPY-based convex optimization.
+
+    This endpoint now uses analytical quadratic programming instead of Monte Carlo sampling,
+    guaranteeing optimal solutions with faster convergence and better numerical stability.
+
+    Includes optional Ledoit-Wolf covariance shrinkage for improved estimation in
+    high-dimensional settings (many assets, limited history).
+    """
     logger.info("efficient_frontier: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     rets = prices.pct_change().dropna()
-    frontier = optimizers.markowitz_frontier(rets)
-    summary = optimizers.optimizer_summary(rets)
+
+    # Use new CVXPY-based optimizer with covariance shrinkage
+    use_shrinkage = len(request.tickers) > 10  # Auto-enable for 10+ assets
+    frontier = optimizers_v2.markowitz_frontier(rets, points=50, use_shrinkage=use_shrinkage)
+    summary = optimizers_v2.optimizer_summary(rets, use_shrinkage=use_shrinkage)
+
     return {**frontier, "optimizers": summary}
 
 
@@ -944,3 +962,439 @@ def portfolio_dashboard_endpoint(request: DashboardRequest) -> DashboardResponse
         request.start_date,
         request.end_date,
     ))
+
+
+@app.post("/api/covariance-analysis")
+def covariance_analysis(request: PortfolioMetricsRequest) -> Dict[str, Any]:
+    """
+    Compare different covariance estimators for robustness analysis.
+
+    Returns condition numbers, effective ranks, and shrinkage intensities for:
+    - Sample covariance (baseline)
+    - Ledoit-Wolf shrinkage
+    - OAS shrinkage
+    - Exponential weighting (60-day halflife)
+
+    Useful for understanding estimation quality and choosing the right method.
+    """
+    logger.info("covariance_analysis: tickers=%s", request.tickers)
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    rets = prices.pct_change().dropna()
+
+    # Compare estimators
+    comparison = covariance_estimation.compare_estimators(rets, annualize=True)
+
+    # Get Ledoit-Wolf details
+    cov_lw, shrinkage = covariance_estimation.ledoit_wolf_shrinkage(rets)
+
+    return {
+        "comparison_table": comparison.to_dict(orient="records"),
+        "ledoit_wolf_shrinkage_intensity": float(shrinkage),
+        "recommendation": (
+            "Use Ledoit-Wolf shrinkage"
+            if comparison.iloc[1]["condition_number"] < comparison.iloc[0]["condition_number"] * 0.8
+            else "Sample covariance is adequate"
+        ),
+    }
+
+
+@app.post("/api/factor-attribution")
+def factor_attribution(request: PortfolioMetricsRequest) -> Dict[str, Any]:
+    """
+    Fama-French 5-factor model attribution for portfolio or asset.
+
+    Decomposes returns into:
+    - Market beta (systematic risk)
+    - Size factor (SMB: small minus big)
+    - Value factor (HML: high minus low book-to-market)
+    - Profitability factor (RMW: robust minus weak)
+    - Investment factor (CMA: conservative minus aggressive)
+    - Alpha (excess return after controlling for factors)
+
+    Returns factor loadings, R², and variance decomposition.
+    """
+    logger.info("factor_attribution: tickers=%s", request.tickers)
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    rets = prices.pct_change().dropna()
+
+    # Compute portfolio returns
+    weights = normalize_weights(request.tickers, request.weights)
+    portfolio_returns = (rets * weights).sum(axis=1)
+
+    # Build synthetic factor returns (in production, use Kenneth French data library)
+    factor_returns = factor_models.build_synthetic_factor_returns(
+        request.tickers,
+        request.start_date,
+        request.end_date,
+        use_ff_proxies=True
+    )
+
+    # Run factor regression
+    result = factor_models.fama_french_5factor_regression(
+        portfolio_returns,
+        factor_returns
+    )
+
+    # Generate attribution report
+    attribution = factor_models.portfolio_factor_decomposition(
+        portfolio_returns,
+        factor_returns
+    )
+
+    return {
+        "alpha_annualized": result["alpha"],
+        "factor_betas": result["betas"],
+        "r_squared": result["r_squared"],
+        "adj_r_squared": result["adj_r_squared"],
+        "coefficient_stats": result["coefficient_stats"],
+        "variance_decomposition": {
+            "total_variance": attribution["total_variance"],
+            "factor_variance": attribution["factor_variance"],
+            "idiosyncratic_variance": attribution["idiosyncratic_variance"],
+            "pct_factor_risk": attribution["percentage_contributions"],
+        },
+        "volatility_decomposition": {
+            "total_volatility": attribution["total_volatility"],
+            "factor_volatility": attribution["factor_volatility"],
+            "idiosyncratic_volatility": attribution["idiosyncratic_volatility"],
+        },
+    }
+
+
+# ============================================================================
+# Phase 3: Advanced Quant Endpoints
+# ============================================================================
+
+from pydantic import BaseModel
+
+
+class PairsTradingRequest(BaseModel):
+    ticker1: str
+    ticker2: str
+    start_date: str
+    end_date: str
+    lookback: int = 60
+    entry_z: float = 2.0
+    exit_z: float = 0.5
+    stop_loss_z: float = 4.0
+
+
+class GARCHRequest(BaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    target_vol: float = 0.15
+    initial_capital: float = 100000
+
+
+class WalkForwardRequest(BaseModel):
+    tickers: List[str]
+    start_date: str
+    end_date: str
+    lookback_months: int = 12
+    reopt_months: int = 3
+    method: str = "sharpe"
+
+
+class MomentumRequest(BaseModel):
+    tickers: List[str]
+    start_date: str
+    end_date: str
+    lookback: int = 126
+    holding_period: int = 21
+    top_n: int = 3
+
+
+class VaRRequest(BaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    confidence_level: float = 0.95
+    method: str = "historical"
+    distribution: str = "normal"
+
+
+class StressTestRequest(BaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    current_value: float = 100000
+    scenarios: Optional[List[str]] = None
+
+
+class PCARequest(BaseModel):
+    tickers: List[str]
+    start_date: str
+    end_date: str
+    n_components: int = 3
+
+
+class TailRiskRequest(BaseModel):
+    ticker: str
+    benchmark_ticker: Optional[str] = None
+    start_date: str
+    end_date: str
+    mar: float = 0.0
+
+
+class LivePositionsRequest(BaseModel):
+    tickers: List[str]
+    quantities: List[float]
+    entry_prices: Optional[List[float]] = None
+
+
+class RebalanceOrdersRequest(BaseModel):
+    current_tickers: List[str]
+    current_quantities: List[float]
+    current_prices: List[float]
+    target_weights: Dict[str, float]
+    total_value: float
+
+
+class RiskLimitsRequest(BaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    positions: Dict[str, float]
+    limits: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/quant/pairs-trading")
+def pairs_trading(request: PairsTradingRequest) -> Dict[str, Any]:
+    """
+    Run pairs trading backtest with cointegration testing.
+
+    Tests cointegration between two assets and generates trading signals
+    based on z-score of the spread.
+    """
+    logger.info("pairs_trading: %s vs %s", request.ticker1, request.ticker2)
+
+    prices = fetch_price_history(
+        [request.ticker1, request.ticker2],
+        request.start_date,
+        request.end_date
+    )
+
+    result = advanced_strategies.pairs_trading_backtest(
+        ticker1=request.ticker1,
+        ticker2=request.ticker2,
+        prices=prices,
+        lookback=request.lookback,
+        entry_z=request.entry_z,
+        exit_z=request.exit_z,
+        stop_loss_z=request.stop_loss_z,
+    )
+
+    return result
+
+
+@app.post("/api/quant/garch-vol-targeting")
+def garch_vol_targeting(request: GARCHRequest) -> Dict[str, Any]:
+    """
+    GARCH(1,1) volatility targeting strategy.
+
+    Fits GARCH model to forecast volatility and dynamically sizes positions
+    to achieve target volatility.
+    """
+    logger.info("garch_vol_targeting: %s target_vol=%s", request.ticker, request.target_vol)
+
+    prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
+    returns = prices.pct_change().dropna()
+
+    result = advanced_strategies.garch_vol_targeting(
+        returns=returns,
+        target_vol=request.target_vol,
+        initial_capital=request.initial_capital,
+    )
+
+    return result
+
+
+@app.post("/api/quant/walk-forward")
+def walk_forward(request: WalkForwardRequest) -> Dict[str, Any]:
+    """
+    Walk-forward optimization with out-of-sample validation.
+
+    Optimizes portfolio on rolling training windows and applies weights
+    to out-of-sample testing periods.
+    """
+    logger.info("walk_forward: %s assets, method=%s", len(request.tickers), request.method)
+
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    returns = prices.pct_change().dropna()
+
+    result = advanced_strategies.walk_forward_optimization(
+        returns=returns,
+        lookback_months=request.lookback_months,
+        reopt_months=request.reopt_months,
+        method=request.method,
+    )
+
+    return result
+
+
+@app.post("/api/quant/momentum")
+def momentum(request: MomentumRequest) -> Dict[str, Any]:
+    """
+    Dual momentum strategy: rank assets by past returns, hold top N.
+    """
+    logger.info("momentum: %s assets, top_n=%s", len(request.tickers), request.top_n)
+
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    returns = prices.pct_change().dropna()
+
+    result = advanced_strategies.momentum_strategy(
+        returns=returns,
+        lookback=request.lookback,
+        holding_period=request.holding_period,
+        top_n=request.top_n,
+    )
+
+    return result
+
+
+@app.post("/api/quant/var-cvar")
+def var_cvar(request: VaRRequest) -> Dict[str, Any]:
+    """
+    Compute Value at Risk (VaR) and Conditional VaR (CVaR).
+
+    Methods: historical, parametric, cornish_fisher
+    Distributions: normal, t
+    """
+    logger.info("var_cvar: %s method=%s", request.ticker, request.method)
+
+    prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
+    returns = prices.pct_change().dropna()
+
+    result = risk_analytics.compute_var_cvar(
+        returns=returns,
+        confidence_level=request.confidence_level,
+        method=request.method,
+        distribution=request.distribution,
+    )
+
+    return result
+
+
+@app.post("/api/quant/stress-test")
+def stress_test(request: StressTestRequest) -> Dict[str, Any]:
+    """
+    Stress test portfolio using historical crisis scenarios.
+
+    Scenarios: 2008 GFC, 2020 COVID, 2022 Rate Hikes
+    """
+    logger.info("stress_test: %s value=%s", request.ticker, request.current_value)
+
+    prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
+    returns = prices.pct_change().dropna()
+
+    result = risk_analytics.stress_test_portfolio(
+        returns=returns,
+        current_value=request.current_value,
+        scenarios=request.scenarios,
+    )
+
+    return result
+
+
+@app.post("/api/quant/pca")
+def pca(request: PCARequest) -> Dict[str, Any]:
+    """
+    Principal Component Analysis for factor decomposition.
+
+    Returns eigenvalues, loadings, and explained variance.
+    """
+    logger.info("pca: %s assets, n_components=%s", len(request.tickers), request.n_components)
+
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    returns = prices.pct_change().dropna()
+
+    result = risk_analytics.pca_decomposition(
+        returns=returns,
+        n_components=request.n_components,
+    )
+
+    return result
+
+
+@app.post("/api/quant/tail-risk")
+def tail_risk(request: TailRiskRequest) -> Dict[str, Any]:
+    """
+    Compute tail risk metrics: max drawdown, Calmar, Omega, Sortino.
+    """
+    logger.info("tail_risk: %s", request.ticker)
+
+    prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
+    returns = prices.pct_change().dropna()
+
+    benchmark_returns = None
+    if request.benchmark_ticker:
+        benchmark_prices = fetch_price_history(
+            [request.benchmark_ticker],
+            request.start_date,
+            request.end_date
+        ).iloc[:, 0]
+        benchmark_returns = benchmark_prices.pct_change().dropna()
+
+    result = risk_analytics.tail_risk_metrics(
+        returns=returns,
+        benchmark_returns=benchmark_returns,
+        mar=request.mar,
+    )
+
+    return result
+
+
+@app.post("/api/quant/live-positions")
+def get_live_positions_api(request: LivePositionsRequest) -> Dict[str, Any]:
+    """
+    Get real-time position tracking with live P&L.
+    """
+    logger.info("live_positions: %s positions", len(request.tickers))
+
+    result = live_trading.get_live_positions(
+        tickers=request.tickers,
+        quantities=request.quantities,
+        entry_prices=request.entry_prices,
+    )
+
+    return result
+
+
+@app.post("/api/quant/generate-orders")
+def generate_orders(request: RebalanceOrdersRequest) -> Dict[str, Any]:
+    """
+    Generate rebalance orders to achieve target weights.
+
+    Returns CSV-ready order list.
+    """
+    logger.info("generate_orders: %s positions", len(request.current_tickers))
+
+    result = live_trading.generate_rebalance_orders(
+        current_tickers=request.current_tickers,
+        current_quantities=request.current_quantities,
+        current_prices=request.current_prices,
+        target_weights=request.target_weights,
+        total_value=request.total_value,
+    )
+
+    return result
+
+
+@app.post("/api/quant/risk-limits")
+def risk_limits(request: RiskLimitsRequest) -> Dict[str, Any]:
+    """
+    Monitor portfolio for risk limit breaches.
+    """
+    logger.info("risk_limits: %s", request.ticker)
+
+    prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
+    returns = prices.pct_change().dropna()
+
+    result = live_trading.monitor_risk_limits(
+        returns=returns,
+        positions=request.positions,
+        limits=request.limits,
+    )
+
+    return result

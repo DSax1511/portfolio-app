@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/factor_models.py
+# hypothesis_version: 6.148.4
+
+[0.0, 0.0001, 0.0002, 0.0005, 0.003, 0.004, 0.005, 0.012, 100.0, 100, 126, 252, '% of Total Risk', 'B', 'Beta', 'CMA', 'Component', 'HML', 'Idiosyncratic', 'Mkt-RF', 'RMW', 'SMB', 'Total', 'adj_r_squared', 'alpha', 'betas', 'coefficient_stats', 'estimate', 'factor_betas', 'factor_variance', 'factor_volatility', 'p_value', 'pct_factor_risk', 'r_squared', 'residuals', 't_stat', 'total_variance', 'total_volatility']

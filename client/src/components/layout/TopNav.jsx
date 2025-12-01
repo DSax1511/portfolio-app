@@ -20,7 +20,7 @@ const Icon = ({ children, size = 18 }) => (
  * Top navigation / global toolbar:
  * - Branding block with subtle gradient glow
  * - Breadcrumb for current context
- * - Action cluster (upload, guide, demo toggle, theme, notifications, avatar)
+ * - Action cluster (upload, guide, demo dropdown, demo badge)
  */
 const TopNav = ({
   breadcrumb,
@@ -28,8 +28,13 @@ const TopNav = ({
   onGuideClick,
   positionsLoading,
   demoMode,
-  onToggleDemo,
+  demoPortfolios = [],
+  activeDemo,
+  onSelectDemo,
+  onExitDemo,
 }) => {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
   return (
     <header
       className="top-nav"
@@ -100,6 +105,7 @@ const TopNav = ({
 
       {/* Action cluster */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Upload + format actions */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
             className="btn btn-primary"
@@ -129,88 +135,86 @@ const TopNav = ({
           </button>
         </div>
 
-        {/* Demo toggle */}
-        <label
-          className="btn btn-ghost"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 10px",
-            border: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(255,255,255,0.02)",
-          }}
-        >
-          <Icon>
-            <path d="M8 21V11l-5 3 9-11 9 11-5-3v10" />
-          </Icon>
-          <span className="label-sm">Demo mode</span>
-          <div
-            onClick={onToggleDemo}
-            style={{
-              position: "relative",
-              width: 38,
-              height: 18,
-              borderRadius: 999,
-              background: demoMode ? "rgba(79,140,255,0.6)" : "rgba(255,255,255,0.15)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-            }}
+        {/* Demo dropdown + badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Load sample portfolios to explore analytics."
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
+            <Icon>
+              <path d="M4 6h16" />
+              <path d="M4 12h16" />
+              <path d="M4 18h16" />
+            </Icon>
+            <span className="label-sm">Demo portfolios</span>
+          </button>
+          {demoMode && (
+            <span
+              className="label-sm"
+              style={{
+                background: "rgba(239,68,68,0.18)",
+                color: "#fca5a5",
+                border: "1px solid rgba(239,68,68,0.5)",
+                borderRadius: 999,
+                padding: "6px 10px",
+                letterSpacing: "0.4px",
+                fontWeight: 700,
+              }}
+            >
+              IN DEMO
+            </span>
+          )}
+          {menuOpen && (
             <div
               style={{
                 position: "absolute",
-                top: 2,
-                left: demoMode ? 20 : 2,
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                background: "#0b1020",
-                boxShadow: "0 6px 14px rgba(0,0,0,0.35)",
-                transition: "all 0.2s ease",
+                right: 0,
+                top: "110%",
+                background: "rgba(16,23,38,0.95)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: "12px",
+                boxShadow: "0 18px 36px rgba(0,0,0,0.4)",
+                minWidth: 280,
+                zIndex: 50,
+                padding: "8px",
               }}
-            />
-          </div>
-        </label>
-
-        {/* Theme toggle (stub) */}
-        <button className="icon-btn" title="Toggle theme" style={iconBtnStyle}>
-          <Icon>
-            <path d="M12 3v2" />
-            <path d="M12 19v2" />
-            <path d="M5 12H3" />
-            <path d="M21 12h-2" />
-            <path d="M17.657 6.343 16.243 7.757" />
-            <path d="m7.757 16.243-1.414 1.414" />
-            <path d="m6.343 6.343 1.414 1.414" />
-            <path d="m16.243 16.243 1.414 1.414" />
-            <circle cx="12" cy="12" r="4" />
-          </Icon>
-        </button>
-
-        {/* Notifications */}
-        <button className="icon-btn" title="Notifications" style={iconBtnStyle}>
-          <Icon>
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </Icon>
-        </button>
-
-        {/* User avatar */}
-        <button
-          className="icon-btn"
-          title="User menu"
-          style={{
-            ...iconBtnStyle,
-            width: 40,
-            height: 40,
-            borderRadius: "12px",
-            background: "linear-gradient(135deg, rgba(79,140,255,0.2), rgba(14,165,233,0.22))",
-          }}
-        >
-          <span style={{ fontWeight: 700, fontSize: "14px" }}>DS</span>
-        </button>
+            >
+              {demoPortfolios.map((demo) => (
+                <button
+                  key={demo.id}
+                  className="btn btn-ghost"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    justifyContent: "flex-start",
+                    marginBottom: "6px",
+                    borderColor: demo.id === activeDemo ? "rgba(79,140,255,0.5)" : "var(--border-subtle)",
+                    background: demo.id === activeDemo ? "rgba(79,140,255,0.12)" : "transparent",
+                  }}
+                  onClick={() => {
+                    onSelectDemo?.(demo);
+                    setMenuOpen(false);
+                  }}
+                  title={demo.description}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontWeight: 700 }}>{demo.name}</span>
+                    <span className="muted" style={{ fontSize: "12px" }}>
+                      {demo.description}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {demoMode && (
+                <button className="btn" style={{ width: "100%", marginTop: 4 }} onClick={() => { onExitDemo?.(); setMenuOpen(false); }}>
+                  Exit demo
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Animated bottom accent */}
@@ -229,18 +233,6 @@ const TopNav = ({
       />
     </header>
   );
-};
-
-const iconBtnStyle = {
-  width: 38,
-  height: 38,
-  borderRadius: "10px",
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "rgba(255,255,255,0.03)",
-  display: "grid",
-  placeItems: "center",
-  color: "#e5e7eb",
-  transition: "all 0.2s ease",
 };
 
 export default TopNav;

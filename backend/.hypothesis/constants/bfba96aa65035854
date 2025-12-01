@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/infra/utils.py
+# hypothesis_version: 6.148.4
+
+[0.0, 1.0, 400, '$', '%Y-%m-%d', ',', '--', '<', '>', 'action', 'cross_over', 'flat', 'long', 'operator']

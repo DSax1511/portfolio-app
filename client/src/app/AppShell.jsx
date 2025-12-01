@@ -9,6 +9,7 @@ import Sidebar from "../components/layout/Sidebar";
 import TopNav from "../components/layout/TopNav";
 import PositionUploadGuide from "../components/ui/PositionUploadGuide";
 import AboutPage from "../features/about/AboutPage";
+import MathEnginePage from "../features/about/MathEnginePage";
 import RiskDiagnosticsPage from "../features/analytics/RiskDiagnosticsPage";
 import ContactPage from "../features/contact/ContactPage";
 import HomePage from "../features/home/HomePage";
@@ -386,7 +387,10 @@ const AppContent = () => {
       setDemoMode(false);
       setActiveDemo(null);
       navigate("/pm/dashboard");
+      return;
     }
+    // If turning on demo without selection, load first demo
+    loadDemoPortfolio(DEMO_PORTFOLIOS[0]);
   };
 
   const handleFileChange = (e) => {
@@ -419,7 +423,10 @@ const AppContent = () => {
         breadcrumb={breadcrumb}
         positionsLoading={positionsLoading}
         demoMode={demoMode}
-        onToggleDemo={toggleDemoPortfolio}
+        demoPortfolios={DEMO_PORTFOLIOS}
+        activeDemo={activeDemo}
+        onSelectDemo={loadDemoPortfolio}
+        onExitDemo={toggleDemoPortfolio}
         onUploadClick={openFilePicker}
         onGuideClick={() => setShowGuide(true)}
       />
@@ -486,6 +493,7 @@ const AppContent = () => {
               <Route path="/quant/execution-simulator" element={<Navigate to="/quant/execution-lab" replace />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/about" element={<AboutPage />} />
+              <Route path="/math-engine" element={<MathEnginePage />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
             {uploadError && (

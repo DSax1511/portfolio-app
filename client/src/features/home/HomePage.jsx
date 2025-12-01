@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 
@@ -13,7 +14,7 @@ const HomePage = () => {
             <div>
               <p className="label-sm">Portfolio Intelligence</p>
               <h1 className="page-title" style={{ margin: 0 }}>
-                Portfolio Intelligence
+                Platform overview
               </h1>
               <p className="page-subtitle" style={{ maxWidth: 780 }}>
                 End-to-end portfolio management and quant research platform built with Python, FastAPI, and React.
@@ -24,6 +25,20 @@ const HomePage = () => {
               <li>Quant Lab for backtesting, microstructure, and regime analysis</li>
               <li>API-first FastAPI backend with React/Tailwind frontend, containerized with Docker</li>
             </ul>
+          </div>
+        </Card>
+
+        <Card className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-800/40">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <p className="font-semibold text-slate-100">Powered by SaxtonPI Quant Engine</p>
+              <p className="muted" style={{ marginTop: "6px" }}>
+                Risk, factor models, portfolio optimization, and backtesting in Python (NumPy/Pandas), exposed via a FastAPI "Portfolio Quant API."
+              </p>
+            </div>
+            <Link to="/math-engine" className="btn btn-primary" style={{ minWidth: "180px", textAlign: "center" }}>
+              View math & methods →
+            </Link>
           </div>
         </Card>
 

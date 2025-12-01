@@ -27,6 +27,7 @@ export const navSections = [
     id: "footer",
     items: [
       { id: "about", path: "/about", label: "About" },
+      { id: "math-engine", path: "/math-engine", label: "Mathematical Engine" },
       { id: "contact", path: "/contact", label: "Contact" },
     ],
   },

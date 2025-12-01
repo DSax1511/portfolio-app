@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/backtests.py
+# hypothesis_version: 6.148.4
+
+[0.0, 1.0, 30.0, 10000.0, 100, 126, 252, 400, '<', '>', 'A', 'D', 'EMA window required.', 'M', 'Q', 'SMA window required.', 'annual', 'bollinger', 'cross_over', 'daily', 'ema', 'ffill', 'long', 'lower', 'macd', 'monthly', 'none', 'price', 'quarterly', 'roc', 'rsi', 'sma', 'upper', 'vol']

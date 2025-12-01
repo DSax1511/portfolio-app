@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/covariance_estimation.py
+# hypothesis_version: 6.148.4
+
+[0.0, 1e-10, 1.0, 252, 'Exponential (60d)', 'Ledoit-Wolf', 'OAS', 'Sample', 'condition_number', 'effective_rank', 'estimator', 'shrinkage']

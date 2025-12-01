@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/config.py
+# hypothesis_version: 6.148.4
+
+['3', 'DATA_CACHE_DIR', 'FRONTEND_ORIGINS', 'PRESETS_PATH', 'RUNS_DIR', 'data_cache', 'presets.json', 'runs']

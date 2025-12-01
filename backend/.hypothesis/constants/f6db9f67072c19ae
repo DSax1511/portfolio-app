@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/data.py
+# hypothesis_version: 6.148.4
+
+[0.0003, 0.02, 100, 252, 365, 400, 'B', 'Close', 'D', 'IWM', 'MTUM', 'SPLV', 'SPY', 'VLUE', 'low_vol', 'market', 'momentum', 'size', 'ticker', 'value']
