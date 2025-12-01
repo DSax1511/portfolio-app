@@ -17,6 +17,10 @@ from .infra.utils import parse_date
 
 logger = logging.getLogger(__name__)
 
+# Rate limiting semaphore: limit concurrent yfinance requests to avoid overwhelming the API
+# On Render, multiple concurrent requests can trigger rate limits; this serializes them slightly
+_yf_semaphore = asyncio.Semaphore(2)
+
 
 def _cache_path(ticker: str) -> Path:
   return settings.data_cache_dir / f"{ticker.upper()}.parquet"
@@ -26,18 +30,23 @@ def _fetch_from_yf_sync(
     ticker: str,
     start: dt.date,
     end: Optional[dt.date],
-    max_retries: int = 3,
-    base_delay: float = 1.0
+    max_retries: int = 5,
+    base_delay: float = 2.0
 ) -> pd.Series:
     """
     Synchronous yfinance fetch with exponential backoff retry logic.
+    
+    Enhanced for Render environment:
+    - Increased max_retries to 5 (from 3) for better reliability
+    - Increased base_delay to 2.0s (from 1.0s) for rate limit recovery
+    - Longer exponential backoff: 2s, 4s, 8s, 16s, 32s
 
     Args:
         ticker: Stock ticker symbol
         start: Start date for historical data
         end: End date for historical data
-        max_retries: Maximum number of retry attempts (default: 3)
-        base_delay: Base delay in seconds for exponential backoff (default: 1.0)
+        max_retries: Maximum number of retry attempts (default: 5)
+        base_delay: Base delay in seconds for exponential backoff (default: 2.0)
 
     Returns:
         pandas Series with price data, or empty Series if all retries fail
@@ -65,7 +74,7 @@ def _fetch_from_yf_sync(
 
         except Exception as e:
             if attempt < max_retries - 1:
-                # Exponential backoff: 1s, 2s, 4s, 8s, ...
+                # Exponential backoff: 2s, 4s, 8s, 16s, 32s
                 delay = base_delay * (2 ** attempt)
                 logger.warning(
                     f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): {e}. "
@@ -80,9 +89,13 @@ def _fetch_from_yf_sync(
 
 
 async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
-    """Async wrapper around synchronous yfinance fetch using thread executor."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
+    """
+    Async wrapper with rate-limiting semaphore to prevent overwhelming yfinance.
+    Limits concurrent requests to 2 at a time on Render.
+    """
+    async with _yf_semaphore:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
 
 
 def _synthetic_price_series(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
@@ -180,6 +193,8 @@ async def _fetch_single_ticker_async(
         fetched = pd.Series(dtype=float)
         try:
             fetched = await _fetch_from_yf_async(ticker, start_date, end_date)
+            # Add small delay between requests to be nice to Yahoo Finance
+            await asyncio.sleep(0.5)
         except Exception:
             fetched = pd.Series(dtype=float)
         
