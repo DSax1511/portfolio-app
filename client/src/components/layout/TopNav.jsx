@@ -1,5 +1,4 @@
 import React from "react";
-import MarketStatusTicker from "./MarketStatusTicker";
 
 const Icon = ({ children, size = 18 }) => (
   <svg
@@ -99,10 +98,8 @@ const TopNav = ({
         </div>
       </div>
 
-      {/* LEFT: Market Status Ticker (hidden on mobile) */}
-      <div className="hidden md:flex justify-start">
-        <MarketStatusTicker />
-      </div>
+      {/* CENTER: Empty (market data feature removed) */}
+      <div />
 
       {/* RIGHT: Action cluster */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>
