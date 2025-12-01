@@ -24,10 +24,11 @@ export const navSections = [
     ],
   },
   {
-    id: "footer",
+    id: "platform",
+    heading: "Platform & Docs",
     items: [
-      { id: "about", path: "/about", label: "About" },
       { id: "math-engine", path: "/math-engine", label: "Mathematical Engine" },
+      { id: "about", path: "/about", label: "About" },
       { id: "contact", path: "/contact", label: "Contact" },
     ],
   },

@@ -278,11 +278,12 @@ const MathEnginePage = () => {
 
   const TabButton = ({ isActive, onClick, children }) => (
     <button
+      type="button"
       onClick={onClick}
-      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+      className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
         isActive
-          ? "bg-amber-500/80 text-white shadow-md"
-          : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-300"
+          ? "bg-amber-500 text-white shadow-sm"
+          : "text-slate-400 hover:text-slate-300"
       }`}
     >
       {children}
@@ -338,30 +339,18 @@ const MathEnginePage = () => {
             <p className="text-slate-300">
               For any set of assets and historical returns, SaxtonPI:
             </p>
-            <ul className="space-y-2 text-slate-400">
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Constructs return series:</strong> Converts daily prices to log-returns and annualizes covariance to match market conventions (×252).
-                </span>
+            <ul className="list-disc pl-5 space-y-2 text-sm text-slate-300">
+              <li>
+                <strong>Constructs return series:</strong> Converts daily prices to log-returns and annualizes covariance to match market conventions (×252).
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Computes risk metrics:</strong> Volatility (σ_p = √w^T Σ w), drawdowns, Sharpe ratio, Sortino ratio, and tail risk (VaR, CVaR).
-                </span>
+              <li>
+                <strong>Computes risk metrics:</strong> Volatility (σ_p = √w^T Σ w), drawdowns, Sharpe ratio, Sortino ratio, and tail risk (VaR, CVaR).
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Decomposes risk:</strong> Shows which positions contribute most to portfolio volatility via marginal and component contribution analysis.
-                </span>
+              <li>
+                <strong>Decomposes risk:</strong> Shows which positions contribute most to portfolio volatility via marginal and component contribution analysis.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Reports correlation:</strong> Exposes covariance and correlation matrices to detect diversification breaks and regime shifts.
-                </span>
+              <li>
+                <strong>Reports correlation:</strong> Exposes covariance and correlation matrices to detect diversification breaks and regime shifts.
               </li>
             </ul>
           </div>
@@ -383,24 +372,15 @@ const MathEnginePage = () => {
             <p className="text-slate-300">
               High-dimensional covariance matrices are notoriously noisy. SaxtonPI applies:
             </p>
-            <ul className="space-y-2 text-slate-400">
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Ledoit-Wolf shrinkage:</strong> Blends sample covariance with a structured target to reduce estimation error and guarantee positive-definiteness.
-                </span>
+            <ul className="list-disc pl-5 space-y-2 text-sm text-slate-300">
+              <li>
+                <strong>Ledoit-Wolf shrinkage:</strong> Blends sample covariance with a structured target to reduce estimation error and guarantee positive-definiteness.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Condition number monitoring:</strong> Detects ill-conditioned matrices (κ {'>'} 1000) that would break optimization solvers.
-                </span>
+              <li>
+                <strong>Condition number monitoring:</strong> Detects ill-conditioned matrices (κ {'>'} 1000) that would break optimization solvers.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Data validation:</strong> Caches price histories, handles missing data, and falls back gracefully when external vendors are slow.
-                </span>
+              <li>
+                <strong>Data validation:</strong> Caches price histories, handles missing data, and falls back gracefully when external vendors are slow.
               </li>
             </ul>
           </div>
@@ -422,30 +402,18 @@ const MathEnginePage = () => {
             <p className="text-slate-300">
               SaxtonPI implements multiple classic portfolio optimization strategies:
             </p>
-            <ul className="space-y-2 text-slate-400">
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Risk Parity:</strong> Equal risk contribution from each asset; highlights when risk is concentrated.
-                </span>
+            <ul className="list-disc pl-5 space-y-2 text-sm text-slate-300">
+              <li>
+                <strong>Risk Parity:</strong> Equal risk contribution from each asset; highlights when risk is concentrated.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Minimum Variance:</strong> Minimizes portfolio volatility subject to constraints (long-only, fully invested, position caps).
-                </span>
+              <li>
+                <strong>Minimum Variance:</strong> Minimizes portfolio volatility subject to constraints (long-only, fully invested, position caps).
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Black–Litterman:</strong> Blends equilibrium returns with your views to generate posterior allocations with built-in uncertainty estimates.
-                </span>
+              <li>
+                <strong>Black–Litterman:</strong> Blends equilibrium returns with your views to generate posterior allocations with built-in uncertainty estimates.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Maximum Sharpe:</strong> Tangency portfolio maximizing risk-adjusted returns; plotted on the efficient frontier.
-                </span>
+              <li>
+                <strong>Maximum Sharpe:</strong> Tangency portfolio maximizing risk-adjusted returns; plotted on the efficient frontier.
               </li>
             </ul>
           </div>
@@ -467,24 +435,15 @@ const MathEnginePage = () => {
             <p className="text-slate-300">
               SaxtonPI decomposes portfolio returns and risks into systematic (factor-driven) versus idiosyncratic (skill-based) components using Fama-French factors:
             </p>
-            <ul className="space-y-2 text-slate-400">
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Fama-French 5-factor model:</strong> Market, Size, Value, Profitability, and Investment factors.
-                </span>
+            <ul className="list-disc pl-5 space-y-2 text-sm text-slate-300">
+              <li>
+                <strong>Fama-French 5-factor model:</strong> Market, Size, Value, Profitability, and Investment factors.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Factor betas & alpha:</strong> Shows how much of your return is explained by each factor and how much is unexplained (alpha).
-                </span>
+              <li>
+                <strong>Factor betas & alpha:</strong> Shows how much of your return is explained by each factor and how much is unexplained (alpha).
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Variance decomposition:</strong> Reveals the fraction of risk driven by factors versus unique idiosyncratic positioning.
-                </span>
+              <li>
+                <strong>Variance decomposition:</strong> Reveals the fraction of risk driven by factors versus unique idiosyncratic positioning.
               </li>
             </ul>
           </div>
@@ -506,30 +465,18 @@ const MathEnginePage = () => {
             <p className="text-slate-300">
               The mathematical engine runs as a FastAPI-powered "Portfolio Quant API" called in real time by the frontend:
             </p>
-            <ul className="space-y-2 text-slate-400">
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Data fetching:</strong> Pulls price histories from yfinance concurrently and caches them for subsequent requests.
-                </span>
+            <ul className="list-disc pl-5 space-y-2 text-sm text-slate-300">
+              <li>
+                <strong>Data fetching:</strong> Pulls price histories from yfinance concurrently and caches them for subsequent requests.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Analytics pipelining:</strong> Orchestrates covariance, factor, risk, and optimization computations in a single request.
-                </span>
+              <li>
+                <strong>Analytics pipelining:</strong> Orchestrates covariance, factor, risk, and optimization computations in a single request.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Error handling & fallbacks:</strong> Gracefully handles missing data, extreme correlations, and solver edge cases.
-                </span>
+              <li>
+                <strong>Error handling & fallbacks:</strong> Gracefully handles missing data, extreme correlations, and solver edge cases.
               </li>
-              <li className="flex gap-3">
-                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
-                <span>
-                  <strong className="text-slate-100">Rate limiting & performance:</strong> Protects expensive endpoints (optimization, backtesting) with sliding-window rate limits.
-                </span>
+              <li>
+                <strong>Rate limiting & performance:</strong> Protects expensive endpoints (optimization, backtesting) with sliding-window rate limits.
               </li>
             </ul>
           </div>
@@ -588,19 +535,21 @@ const MathEnginePage = () => {
     >
       <div className="space-y-8">
         {/* Main Tab Navigation */}
-        <div className="flex gap-3 px-6">
-          <TabButton
-            isActive={activeTab === "overview"}
-            onClick={() => setActiveTab("overview")}
-          >
-            Overview
-          </TabButton>
-          <TabButton
-            isActive={activeTab === "calculations"}
-            onClick={() => setActiveTab("calculations")}
-          >
-            Calculations
-          </TabButton>
+        <div className="px-6">
+          <div className="inline-flex rounded-full bg-slate-900/50 p-1.5 border border-slate-700">
+            <TabButton
+              isActive={activeTab === "overview"}
+              onClick={() => setActiveTab("overview")}
+            >
+              Overview
+            </TabButton>
+            <TabButton
+              isActive={activeTab === "calculations"}
+              onClick={() => setActiveTab("calculations")}
+            >
+              Calculations
+            </TabButton>
+          </div>
         </div>
 
         {/* Tab Content */}
