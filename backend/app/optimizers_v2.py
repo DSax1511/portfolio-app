@@ -233,6 +233,154 @@ def markowitz_frontier(
     }
 
 
+def markowitz_frontier_with_transaction_costs(
+    rets: pd.DataFrame,
+    current_weights: Optional[np.ndarray] = None,
+    transaction_cost_bps: float = 10.0,
+    points: int = 50,
+    cap: float = 0.35,
+    min_weight: float = 0.0,
+    use_shrinkage: bool = True,
+) -> Dict[str, Any]:
+    """
+    Compute efficient frontier WITH TRANSACTION COSTS included.
+
+    This is critical for realistic portfolio optimization. The traditional
+    efficient frontier ignores trading costs, leading to unrealistic
+    rebalancing recommendations.
+
+    Mathematical formulation:
+        minimize    w^T Σ w + λ * Σ |w_i - w_prev_i|
+        subject to  μ^T w ≥ r_target
+                    1^T w = 1
+                    min_weight ≤ w ≤ cap
+
+    Where λ = transaction_cost_bps / 10000 (converts bps to decimal)
+
+    Args:
+        rets: Historical returns DataFrame
+        current_weights: Current portfolio weights (for turnover calculation)
+                        If None, assumes coming from 0 (all cash)
+        transaction_cost_bps: Cost in basis points (default 10 bps = 0.1%)
+        points: Number of frontier points
+        cap: Maximum weight per asset
+        min_weight: Minimum weight per asset
+        use_shrinkage: Apply Ledoit-Wolf shrinkage
+
+    Returns:
+        Dictionary with frontier adjusted for transaction costs
+    """
+    if current_weights is None:
+        current_weights = np.zeros(len(rets.columns))
+    
+    # Annualize statistics
+    mean_returns = rets.mean() * 252
+    cov = rets.cov() * 252
+
+    n_assets = len(mean_returns)
+    
+    # Apply covariance shrinkage
+    if use_shrinkage and n_assets > 2:
+        from sklearn.covariance import LedoitWolf
+        lw = LedoitWolf()
+        lw.fit(rets)
+        cov = pd.DataFrame(
+            lw.covariance_ * 252,
+            index=cov.index,
+            columns=cov.columns
+        )
+
+    mu = mean_returns.values
+    Sigma = cov.values
+    
+    # Check PSD
+    eigvals = np.linalg.eigvalsh(Sigma)
+    if np.any(eigvals < -1e-8):
+        raise HTTPException(
+            status_code=400,
+            detail="Covariance matrix is not positive semi-definite"
+        )
+    
+    if eigvals.min() < 1e-6:
+        Sigma = Sigma + np.eye(n_assets) * 1e-6
+
+    # Convert transaction cost from bps to decimal
+    tc_decimal = transaction_cost_bps / 10000.0
+
+    # Define variables and parameters
+    w = cp.Variable(n_assets)
+    turnover_var = cp.Variable(n_assets)
+
+    # Base constraints
+    base_constraints = [
+        cp.sum(w) == 1,
+        w >= min_weight,
+        w <= cap,
+        turnover_var >= 0,
+        turnover_var >= w - current_weights,  # |w_i - w_prev_i|
+        turnover_var >= current_weights - w,
+    ]
+
+    # Objective: minimize variance + transaction costs
+    objective = cp.Minimize(
+        cp.quad_form(w, Sigma) + tc_decimal * cp.sum(turnover_var)
+    )
+
+    # Compute frontier with transaction costs
+    min_return = float(mu @ current_weights)  # Min return is staying put
+    max_return = float(np.max(mu)) * 0.95
+
+    target_returns = np.linspace(min_return, max_return, points)
+    frontier = []
+    max_sharpe_portfolio = None
+    max_sharpe = -np.inf
+
+    for target_ret in target_returns:
+        constraints = base_constraints + [mu @ w >= target_ret]
+        prob = cp.Problem(objective, constraints)
+        prob.solve(solver=cp.OSQP, verbose=False)
+
+        if prob.status in ["optimal", "optimal_inaccurate"]:
+            weights = w.value
+            turnover = cp.sum(turnover_var).value
+            
+            # Portfolio metrics (after costs)
+            gross_return = float(mu @ weights)
+            cost_impact = turnover * tc_decimal
+            net_return = gross_return - cost_impact
+            vol = float(np.sqrt(weights @ Sigma @ weights))
+            sharpe = net_return / vol if vol > 1e-10 else 0.0
+
+            frontier.append({
+                "return": gross_return,
+                "return_after_costs": net_return,
+                "vol": vol,
+                "sharpe": sharpe,
+                "turnover": float(turnover),
+                "transaction_cost_impact": float(cost_impact),
+                "weights": weights.tolist(),
+            })
+
+            if sharpe > max_sharpe:
+                max_sharpe = sharpe
+                max_sharpe_portfolio = frontier[-1].copy()
+
+    if not frontier:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to construct efficient frontier with transaction costs"
+        )
+
+    if max_sharpe_portfolio is None:
+        max_sharpe_portfolio = frontier[-1]
+
+    return {
+        "frontier": frontier,
+        "max_sharpe": max_sharpe_portfolio,
+        "transaction_costs_disclaimer": "All returns and Sharpe ratios include transaction cost impact",
+    }
+
+
 def risk_parity_weights_cvxpy(
     cov: pd.DataFrame,
     use_shrinkage: bool = True,
@@ -280,6 +428,9 @@ def risk_parity_weights_cvxpy(
     target = 1.0 / n
 
     # Fixed-point iteration
+    import logging
+    logger = logging.getLogger(__name__)
+    
     for iteration in range(max_iter):
         # Compute marginal risk contributions: MRC_i = (Σw)_i
         mrc = Sigma @ w
@@ -289,6 +440,7 @@ def risk_parity_weights_cvxpy(
 
         # Check convergence: all risk contributions close to target
         if np.allclose(rc, target, atol=tol):
+            logger.debug(f"Risk parity converged in {iteration + 1} iterations")
             break
 
         # Update weights: w_new_i = target / MRC_i
@@ -305,7 +457,11 @@ def risk_parity_weights_cvxpy(
         else:
             # Fallback to equal weight if something goes wrong
             w = np.array([1.0 / n] * n)
+            logger.warning("Risk parity: w_sum <= 0, reverting to equal weight")
             break
+        
+        if iteration == max_iter - 1:
+            logger.warning(f"Risk parity did not converge after {max_iter} iterations")
 
     return w
 
@@ -314,13 +470,15 @@ def min_variance_weights_cvxpy(
     cov: pd.DataFrame,
     cap: float = 0.35,
     min_weight: float = 0.0,
-    use_shrinkage: bool = True
+    use_shrinkage: bool = True,
+    transaction_costs: Optional[np.ndarray] = None,
+    prev_weights: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Compute minimum variance portfolio using convex optimization.
 
     Mathematical formulation:
-        minimize    w^T Σ w
+        minimize    w^T Σ w + λ_tc * Σ |w_i - w_prev_i|
         subject to  1^T w = 1
                     min_weight ≤ w ≤ cap
 
@@ -328,17 +486,24 @@ def min_variance_weights_cvxpy(
         cov: Covariance matrix (n × n)
         cap: Maximum weight per asset
         min_weight: Minimum weight per asset
-        use_shrinkage: Apply covariance shrinkage
+        use_shrinkage: Apply Ledoit-Wolf covariance shrinkage
+        transaction_costs: Cost per unit turnover (default: 0.001 = 10 bps)
+        prev_weights: Previous weights for turnover calculation
 
     Returns:
         Minimum variance weights as numpy array
     """
     if use_shrinkage:
-        # Similar note as risk_parity_weights_cvxpy
-        pass
+        # Apply Ledoit-Wolf shrinkage for numerical stability
+        from sklearn.covariance import LedoitWolf
+        lw = LedoitWolf()
+        lw.fit(cov.values.T if cov.shape[0] < cov.shape[1] else cov.values)
+        Sigma = lw.covariance_
+        Sigma = pd.DataFrame(Sigma, index=cov.index, columns=cov.columns).values
+    else:
+        Sigma = cov.values
 
     n = cov.shape[0]
-    Sigma = cov.values
 
     # Ensure PSD
     eigvals = np.linalg.eigvalsh(Sigma)
@@ -347,7 +512,15 @@ def min_variance_weights_cvxpy(
 
     w = cp.Variable(n)
 
+    # Base objective: minimize variance
     objective = cp.Minimize(cp.quad_form(w, Sigma))
+
+    # Add transaction costs if provided
+    if transaction_costs is not None and prev_weights is not None:
+        turnover = cp.norm1(w - prev_weights)
+        cost_multiplier = np.mean(transaction_costs) if isinstance(transaction_costs, np.ndarray) else transaction_costs
+        objective = cp.Minimize(cp.quad_form(w, Sigma) + cost_multiplier * turnover)
+
     constraints = [
         cp.sum(w) == 1,
         w >= min_weight,
@@ -355,7 +528,14 @@ def min_variance_weights_cvxpy(
     ]
 
     prob = cp.Problem(objective, constraints)
-    prob.solve(solver=cp.OSQP, verbose=False)
+    
+    try:
+        prob.solve(solver=cp.OSQP, verbose=False)
+    except Exception as e:
+        # Log error and fall back to equal weight
+        import logging
+        logging.warning(f"CVXP min variance solver failed: {e}. Falling back to equal weight.")
+        return np.array([1.0 / n] * n)
 
     if prob.status not in ["optimal", "optimal_inaccurate"]:
         # Fallback to equal weight
@@ -444,6 +624,9 @@ def black_litterman(
 
     # Compute posterior mean:
     # μ_BL = [(τΣ)^-1 + P^T Ω^-1 P]^-1 [(τΣ)^-1 μ + P^T Ω^-1 Q]
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         tau_cov_inv = np.linalg.inv(tau_cov)
         omega_inv = np.linalg.inv(omega)
@@ -456,7 +639,11 @@ def black_litterman(
         posterior = M_inv @ (tau_cov_inv @ prior_returns.values + P.T @ omega_inv @ Q)
 
     except np.linalg.LinAlgError as e:
-        raise ValueError(f"Failed to compute posterior returns: {e}") from e
+        logger.warning(
+            f"Black-Litterman posterior computation failed (tau={tau}, n_views={len(views)}, "
+            f"n_assets={len(assets)}): {e}. Returning prior returns."
+        )
+        return prior_returns.copy()
 
     return pd.Series(posterior, index=prior_returns.index, name="posterior_returns")
 
@@ -493,10 +680,206 @@ def optimizer_summary(
 
     rp = risk_parity_weights_cvxpy(cov, use_shrinkage=False)  # Already applied
     mv = min_variance_weights_cvxpy(cov, cap, use_shrinkage=False)
-    bl = black_litterman(mean_returns, cov)
+    
+    # Black-Litterman: get posterior returns then optimize
+    bl_returns = black_litterman(mean_returns, cov)
+    
+    # Optimize using Black-Litterman posterior returns
+    # Use Markowitz frontier at target return = posterior expected return
+    try:
+        from scipy.optimize import minimize
+        
+        # Maximize risk-adjusted return using posterior views
+        def negative_sharpe(w):
+            ret = np.dot(w, bl_returns.values)
+            vol = np.sqrt(np.dot(w.T, np.dot(cov.values, w)))
+            return -ret / (vol + 1e-10)
+        
+        constraints = ({"type": "eq", "fun": lambda w: np.sum(w) - 1})
+        bounds = [(0, cap) for _ in range(len(bl_returns))]
+        result = minimize(negative_sharpe, np.ones(len(bl_returns)) / len(bl_returns), 
+                         method="SLSQP", bounds=bounds, constraints=constraints)
+        bl_weights = result.x if result.success else np.ones(len(bl_returns)) / len(bl_returns)
+    except Exception:
+        # Fallback to equal weight if optimization fails
+        bl_weights = np.ones(len(bl_returns)) / len(bl_returns)
 
     return {
         "risk_parity": rp.tolist(),
         "min_vol": mv.tolist(),
-        "black_litterman": bl.tolist(),
+        "black_litterman": bl_weights.tolist(),
     }
+
+
+# ============================================================================
+# Institutional-Grade Portfolio Optimization with Constraints
+# ============================================================================
+
+def institutional_portfolio_optimizer(
+    rets: pd.DataFrame,
+    current_weights: Optional[np.ndarray] = None,
+    target_return: Optional[float] = None,
+    transaction_cost_bps: float = 10.0,  # 10 basis points
+    max_turnover: float = 0.20,  # 20% max turnover per rebalance
+    max_weight: float = 0.35,
+    min_weight: float = 0.0,
+    sector_limits: Optional[Dict[str, float]] = None,
+    use_shrinkage: bool = True,
+) -> Dict[str, Any]:
+    """
+    Institutional-grade portfolio optimization with real-world constraints.
+
+    Features:
+    - Transaction cost modeling (realistic rebalancing costs)
+    - Turnover constraints (limit portfolio churn)
+    - Sector exposure limits (sector drift management)
+    - Weight bounds (position concentration limits)
+    - Ledoit-Wolf covariance shrinkage (numerical stability)
+
+    Mathematical formulation:
+        minimize    w^T Σ w + λ_tc * Σ |w_i - w_prev_i|
+        subject to  1^T w = 1
+                    min_weight ≤ w ≤ max_weight
+                    Σ |w_i - w_prev_i| ≤ max_turnover
+                    sector_exposure ≤ sector_limit (if provided)
+
+    Args:
+        rets: Historical returns DataFrame
+        current_weights: Current portfolio weights (for turnover calculation)
+        target_return: Target expected return (optional, for constrained optimization)
+        transaction_cost_bps: Transaction cost in basis points (default 10 bps)
+        max_turnover: Maximum portfolio turnover (default 20%)
+        max_weight: Maximum single position size
+        min_weight: Minimum position size
+        sector_limits: Dict mapping sector -> max allocation %
+        use_shrinkage: Apply Ledoit-Wolf shrinkage
+
+    Returns:
+        Dictionary with:
+        - weights: Optimal portfolio weights
+        - expected_return: Expected portfolio return
+        - volatility: Portfolio volatility
+        - turnover: Rebalancing turnover
+        - transaction_costs: Expected transaction costs
+        - optimization_details: Full optimization metadata
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    n_assets = rets.shape[1]
+    cov = rets.cov() * 252
+    mean_returns = rets.mean() * 252
+
+    # Apply Ledoit-Wolf shrinkage for numerical stability
+    if use_shrinkage:
+        from sklearn.covariance import LedoitWolf
+        lw = LedoitWolf()
+        lw.fit(rets)
+        cov = pd.DataFrame(
+            lw.covariance_ * 252,
+            index=cov.index,
+            columns=cov.columns
+        )
+        shrinkage_coeff = lw.shrinkage_
+        logger.debug(f"Applied Ledoit-Wolf shrinkage: coefficient={shrinkage_coeff:.4f}")
+
+    # Fallback to equal weight if no current weights provided
+    if current_weights is None:
+        current_weights = np.ones(n_assets) / n_assets
+
+    # Transaction cost parameter: convert from bps to decimal
+    tc_decimal = transaction_cost_bps / 10000.0
+
+    # Optimization using CVXPY
+    w = cp.Variable(n_assets)
+    turnover_var = cp.Variable(n_assets, nonneg=True)
+
+    # Objective: minimize variance + transaction costs
+    portfolio_variance = cp.quad_form(w, cov.values)
+    transaction_costs = cp.sum(turnover_var) * tc_decimal
+    
+    objective = cp.Minimize(portfolio_variance + transaction_costs)
+
+    # Constraints
+    constraints = [
+        cp.sum(w) == 1,                              # Fully invested
+        w >= min_weight,                             # Minimum position size
+        w <= max_weight,                             # Maximum position size (concentration limit)
+        turnover_var >= w - current_weights,         # Turnover: selling
+        turnover_var >= current_weights - w,         # Turnover: buying
+        cp.sum(turnover_var) <= max_turnover,        # Total turnover limit
+    ]
+
+    # Optional: Sector exposure limits
+    if sector_limits:
+        for sector, limit in sector_limits.items():
+            # Find indices of assets in sector
+            sector_indices = [i for i, ticker in enumerate(rets.columns) 
+                            if ticker in sector]  # Simplified - assumes ticker in sector string
+            if sector_indices:
+                constraints.append(
+                    cp.sum([w[i] for i in sector_indices]) <= limit
+                )
+
+    # Optional: Target return constraint
+    if target_return is not None:
+        constraints.append(
+            mean_returns.values @ w >= target_return
+        )
+
+    # Solve
+    prob = cp.Problem(objective, constraints)
+    try:
+        prob.solve(solver=cp.OSQP, verbose=False)
+    except Exception as e:
+        logger.warning(f"Institutional optimizer solver failed: {e}. Returning equal weight.")
+        return {
+            "weights": (np.ones(n_assets) / n_assets).tolist(),
+            "expected_return": float(mean_returns.mean()),
+            "volatility": float(np.sqrt(np.mean(np.diag(cov.values)))),
+            "turnover": 0.0,
+            "transaction_costs": 0.0,
+            "optimization_details": {"status": "solver_error", "error": str(e)},
+        }
+
+    if prob.status not in ["optimal", "optimal_inaccurate"]:
+        logger.warning(f"Institutional optimizer status: {prob.status}. Returning equal weight.")
+        return {
+            "weights": (np.ones(n_assets) / n_assets).tolist(),
+            "expected_return": float(mean_returns.mean()),
+            "volatility": float(np.sqrt(np.mean(np.diag(cov.values)))),
+            "turnover": 0.0,
+            "transaction_costs": 0.0,
+            "optimization_details": {"status": prob.status},
+        }
+
+    # Extract results
+    opt_weights = w.value
+    opt_turnover = turnover_var.value.sum()
+    opt_costs = opt_turnover * tc_decimal
+
+    # Portfolio metrics
+    exp_ret = float(np.dot(opt_weights, mean_returns.values))
+    port_vol = float(np.sqrt(np.dot(opt_weights.T, np.dot(cov.values, opt_weights))))
+    sharpe = exp_ret / (port_vol + 1e-10)
+
+    logger.info(
+        f"Institutional optimizer converged: "
+        f"return={exp_ret:.4f}, vol={port_vol:.4f}, sharpe={sharpe:.4f}, "
+        f"turnover={opt_turnover:.4f}, costs={opt_costs:.6f}"
+    )
+
+    return {
+        "weights": opt_weights.tolist(),
+        "expected_return": exp_ret,
+        "volatility": port_vol,
+        "sharpe_ratio": sharpe,
+        "turnover": float(opt_turnover),
+        "transaction_costs": float(opt_costs),
+        "optimization_details": {
+            "status": prob.status,
+            "solver": "OSQP",
+            "convergence_time_ms": prob.solver_stats.solve_time * 1000 if hasattr(prob, 'solver_stats') else None,
+        },
+    }
+

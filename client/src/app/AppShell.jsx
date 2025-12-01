@@ -20,6 +20,10 @@ import ExecutionSimulatorPage from "../features/quant/ExecutionSimulatorPage";
 import MicrostructurePage from "../features/quant/MicrostructurePage";
 import RegimesPage from "../features/quant/RegimesPage";
 import StrategyBuilderPage from "../features/quant/StrategyBuilderPage";
+import PortfolioLabPage from "../pages/PortfolioLabPage";
+import AdvancedBacktestPage from "../pages/AdvancedBacktestPage";
+import RiskLabPage from "../pages/RiskLabPage";
+import LiveTradingPage from "../pages/LiveTradingPage";
 import { PortfolioAnalyticsProvider, usePortfolioAnalytics } from "../state/portfolioAnalytics";
 import { QuantLabProvider } from "../state/quantLabStore";
 import { ActiveRunProvider } from "../state/activeRun";
@@ -491,6 +495,10 @@ const AppContent = () => {
               <Route path="/quant/regimes" element={<RegimesPage />} />
               <Route path="/quant/execution-lab" element={<ExecutionSimulatorPage />} />
               <Route path="/quant/execution-simulator" element={<Navigate to="/quant/execution-lab" replace />} />
+              <Route path="/phase3/portfolio-lab" element={<PortfolioLabPage />} />
+              <Route path="/phase3/advanced-backtest" element={<AdvancedBacktestPage />} />
+              <Route path="/phase3/risk-lab" element={<RiskLabPage />} />
+              <Route path="/phase3/live-trading" element={<LiveTradingPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/math-engine" element={<MathEnginePage />} />

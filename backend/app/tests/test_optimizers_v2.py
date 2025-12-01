@@ -618,6 +618,8 @@ def test_portfolio_variance_formula():
     mean_returns = returns.mean()
     cov = returns.cov()
 
+
+
     _, vol, _ = portfolio_perf(weights, mean_returns, cov)
 
     # Manual calculation
@@ -625,3 +627,125 @@ def test_portfolio_variance_formula():
     vol_manual = np.sqrt(variance_manual)
 
     assert_allclose(vol, vol_manual, rtol=1e-10)
+
+
+# ============================================================================
+# Edge Case Tests: Critical for Production Robustness
+# ============================================================================
+
+@pytest.mark.edge_case
+def test_min_variance_singular_covariance():
+    """Test minimum variance with singular covariance matrix."""
+    # Create singular covariance (rank 1)
+    n_assets = 3
+    n_periods = 10
+    
+    # All assets perfectly correlated
+    factor = np.random.randn(n_periods)
+    returns = pd.DataFrame({
+        "Asset_A": factor,
+        "Asset_B": factor * 0.8,
+        "Asset_C": factor * 1.2,
+    })
+    
+    cov = returns.cov() * 252
+    
+    # Should handle gracefully without crashing
+    weights = min_variance_weights_cvxpy(cov, use_shrinkage=True)
+    
+    assert len(weights) == n_assets
+    assert_allclose(weights.sum(), 1.0, rtol=1e-5)
+    assert np.all(weights >= -1e-6)
+
+
+@pytest.mark.edge_case
+def test_risk_parity_small_portfolio():
+    """Test risk parity with only 2 assets."""
+    n_assets = 2
+    n_periods = 100
+    
+    returns = pd.DataFrame(
+        np.random.randn(n_periods, n_assets) * 0.015,
+        columns=["Asset_A", "Asset_B"]
+    )
+    
+    cov = returns.cov() * 252
+    weights = risk_parity_weights_cvxpy(cov, use_shrinkage=False)
+    
+    assert len(weights) == n_assets
+    assert_allclose(weights.sum(), 1.0, rtol=1e-5)
+
+
+@pytest.mark.edge_case
+def test_black_litterman_fallback_to_prior():
+    """Test that Black-Litterman gracefully returns prior on singular omega."""
+    returns = pd.DataFrame(
+        np.random.randn(100, 3) * 0.01,
+        columns=["A", "B", "C"]
+    )
+    
+    prior = returns.mean() * 252
+    cov = returns.cov() * 252
+    
+    # Extreme tau should force fallback
+    result = black_litterman(
+        prior, 
+        cov, 
+        views={"A": 0.15},
+        tau=1e-10  # Very small tau causes numerical issues
+    )
+    
+    # Should return something reasonable (either posterior or prior)
+    assert len(result) == len(prior)
+    assert not np.any(np.isnan(result))
+
+
+@pytest.mark.edge_case
+def test_min_variance_with_transaction_costs():
+    """Test minimum variance with transaction costs."""
+    returns = pd.DataFrame(
+        np.random.randn(100, 3) * 0.01,
+        columns=["A", "B", "C"]
+    )
+    
+    cov = returns.cov() * 252
+    prev_weights = np.array([0.3, 0.4, 0.3])
+    
+    weights_no_cost = min_variance_weights_cvxpy(cov, use_shrinkage=False)
+    weights_with_cost = min_variance_weights_cvxpy(
+        cov,
+        use_shrinkage=False,
+        transaction_costs=np.array([0.001, 0.001, 0.001]),  # 10 bps
+        prev_weights=prev_weights
+    )
+    
+    # With transaction costs, weights should be closer to previous
+    turnover_no_cost = np.abs(weights_no_cost - prev_weights).sum()
+    turnover_with_cost = np.abs(weights_with_cost - prev_weights).sum()
+    
+    assert turnover_with_cost <= turnover_no_cost + 1e-6
+
+
+@pytest.mark.edge_case
+def test_optimizer_summary_numerical_stability():
+    """Test optimizer_summary with challenging data."""
+    # Create returns with extreme values
+    np.random.seed(42)
+    returns = pd.DataFrame(
+        np.random.randn(50, 5) * np.array([0.001, 0.1, 0.05, 0.02, 0.03]),
+        columns=[f"Asset_{i}" for i in range(5)]
+    )
+    
+    result = optimizer_summary(returns, cap=0.5, use_shrinkage=True)
+    
+    # Check structure
+    assert "risk_parity" in result
+    assert "min_vol" in result
+    assert "black_litterman" in result
+    
+    # Check each strategy is valid
+    for strategy_name, weights in result.items():
+        weights_arr = np.array(weights)
+        assert_allclose(weights_arr.sum(), 1.0, rtol=1e-4)
+        assert len(weights_arr) == 5
+

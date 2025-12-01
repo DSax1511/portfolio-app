@@ -1,0 +1,4 @@
+# file: /Users/dfsaxton/portfolio-app/backend/app/optimizers_v2.py
+# hypothesis_version: 6.148.4
+
+[-1e-08, 0.0, 1e-12, 1e-10, 1e-08, 1e-06, 0.025, 0.05, 0.2, 0.35, 0.95, 1.0, 10.0, 10000.0, 252, 400, 1000, 'OSQP', 'SLSQP', 'black_litterman', 'convergence_time_ms', 'eq', 'error', 'expected_return', 'frontier', 'fun', 'max_sharpe', 'min_vol', 'optimal', 'optimal_inaccurate', 'optimization_details', 'posterior_returns', 'return', 'risk_parity', 'sharpe_ratio', 'solver', 'solver_error', 'solver_stats', 'status', 'transaction_costs', 'turnover', 'type', 'vol', 'volatility', 'weights']

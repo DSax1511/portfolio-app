@@ -37,18 +37,16 @@ def _fetch_from_yf(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Se
 
 def _synthetic_price_series(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
     """
-    Offline-friendly fallback: generate a deterministic random walk so analytics still work
-    when network data is unavailable.
+    DEPRECATED: This function exists only for backward compatibility.
+    Synthetic data undermines credibility and is NOT used in production.
+    Always fail explicitly if real data is unavailable.
     """
-    end_date = end or dt.date.today()
-    idx = pd.date_range(start=start, end=end_date, freq="B")
-    if idx.empty:
-        idx = pd.date_range(end=end_date, periods=252, freq="B")
-    rng = np.random.default_rng(abs(hash(ticker)) % (2**32))
-    # light positive drift, equity-like volatility
-    rets = rng.normal(loc=0.0003, scale=0.02, size=len(idx))
-    prices = 100 * (1 + rets).cumprod()
-    return pd.Series(prices, index=idx, name=ticker)
+    raise HTTPException(
+        status_code=503,
+        detail=f"Data unavailable for {ticker}. Unable to fetch from yFinance. "
+               f"Please check: (1) ticker symbol is correct, (2) network connection, "
+               f"(3) try again in a moment. We do not use synthetic data."
+    )
 
 
 def _load_cached(ticker: str) -> pd.Series:

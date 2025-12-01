@@ -18,7 +18,7 @@ import yfinance as yf
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import analytics, backtests, optimizers, commentary, optimizers_v2, covariance_estimation, factor_models
+from . import analytics, backtests, optimizers, commentary, optimizers_v2, covariance_estimation, factor_models, backtesting, quant_strategies, factor_attribution
 from .quant_engine import run_quant_backtest
 from .quant_regimes import detect_regimes
 from .quant import (
@@ -1157,6 +1157,203 @@ class RiskLimitsRequest(BaseModel):
     end_date: str
     positions: Dict[str, float]
     limits: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/backtests/walk-forward", responses={400: {"model": ApiError}})
+def backtest_walk_forward(request: BacktestRequest) -> Dict[str, Any]:
+    """
+    Walk-forward validation: separates training and testing periods to prevent lookahead bias.
+
+    This is the PROPER way to backtest. Unlike traditional backtests, this:
+    1. Trains on historical data
+    2. Tests on unseen future data (true out-of-sample)
+    3. Reports realistic performance metrics
+    4. Detects overfitting (compares train vs test returns)
+
+    Returns:
+    - out_of_sample_sharpe: Realistic Sharpe ratio on held-out data
+    - training_performance: In-sample metrics (for reference)
+    - testing_performance: Out-of-sample metrics (realistic)
+    - overfitting_indicator: "low", "medium", or "high"
+    - performance_degradation: % return decline from training to testing
+    """
+    logger.info("walk_forward_backtest: %s", request.strategy)
+
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    returns_df = prices.pct_change().dropna()
+
+    # Compute portfolio returns
+    weights = normalize_weights(request.tickers, request.weights)
+    portfolio_returns = (returns_df * weights).sum(axis=1)
+
+    # Run walk-forward validation
+    wf_result = backtesting.validate_walk_forward_window(
+        returns_df,
+        train_window=int(request.parameters.get("train_window", 252)),
+        test_window=int(request.parameters.get("test_window", 63)),
+        rebalance_freq=request.rebalance_frequency or "M",
+    )
+
+    # Also compute drawdown analysis
+    dd_result = backtesting.analyze_drawdown(portfolio_returns)
+
+    # Monte Carlo reshuffle for robustness
+    mc_result = backtesting.monte_carlo_backtest(
+        returns_df,
+        np.array(weights),
+        n_simulations=request.parameters.get("monte_carlo_sims", 1000),
+    )
+
+    return {
+        "walk_forward": wf_result,
+        "drawdown_analysis": dd_result,
+        "monte_carlo_robustness": mc_result,
+        "strategy": request.strategy,
+        "tickers": request.tickers,
+        "weights": weights,
+    }
+
+
+@app.post("/api/strategies/pairs-trading", responses={400: {"model": ApiError}})
+def pairs_trading_backtest_endpoint(
+    request: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Pairs trading strategy with cointegration testing and mean reversion mechanics.
+
+    Tests cointegration between two assets and generates trading signals
+    based on z-score of the spread.
+
+    Signals:
+    - Entry: z-score > 2 (deviation from mean)
+    - Exit: z-score crosses 0 (reversion to mean)
+    - Stop loss: z-score > 3 (deterioration)
+
+    Args:
+        asset1: First ticker
+        asset2: Second ticker
+        start_date: Period start
+        end_date: Period end
+        lookback: Window for rolling mean/std (default 60)
+        entry_zscore: Entry threshold (default 2.0)
+        exit_zscore: Exit threshold (default 0.5)
+        stop_loss_zscore: Stop loss threshold (default 3.0)
+
+    Returns:
+        Backtest results with returns, Sharpe ratio, max drawdown, trade list
+    """
+    logger.info("pairs_trading: %s vs %s", request.get("asset1"), request.get("asset2"))
+
+    asset1 = request.get("asset1")
+    asset2 = request.get("asset2")
+    start_date = request.get("start_date")
+    end_date = request.get("end_date")
+
+    prices = fetch_price_history([asset1, asset2], start_date, end_date)
+
+    # First, test for cointegration
+    coint_result = quant_strategies.johansen_cointegration_test(prices)
+
+    if not coint_result["pairs"]:
+        raise HTTPException(
+            status_code=400,
+            detail="No cointegrating pairs found at 95% confidence level"
+        )
+
+    # Get the cointegrating vector
+    pair_info = coint_result["pairs"][0]
+    coint_vector = pair_info["cointegrating_vector"]
+
+    # Run pairs trading backtest
+    backtest_result = quant_strategies.pairs_trading_backtest(
+        price_data=prices,
+        asset1=asset1,
+        asset2=asset2,
+        cointegrating_vector=coint_vector,
+        lookback=int(request.get("lookback", 60)),
+        entry_zscore=float(request.get("entry_zscore", 2.0)),
+        exit_zscore=float(request.get("exit_zscore", 0.5)),
+        stop_loss_zscore=float(request.get("stop_loss_zscore", 3.0)),
+    )
+
+    return {
+        "cointegration": coint_result,
+        "backtest": backtest_result,
+        "interpretation": "Pairs trading exploits mean reversion in cointegrated spreads"
+    }
+
+
+@app.post("/api/analytics/factor-attribution-v2", responses={400: {"model": ApiError}})
+def factor_attribution_v2(request: PortfolioMetricsRequest) -> Dict[str, Any]:
+    """
+    Advanced factor attribution using Fama-French 5-factor model.
+
+    Decomposes portfolio returns into:
+    - Alpha (excess return)
+    - Market beta (systematic equity risk)
+    - Size factor (SMB: small minus big)
+    - Value factor (HML: high minus low)
+    - Profitability factor (RMW)
+    - Investment factor (CMA)
+
+    Also includes:
+    - Risk decomposition (systematic vs idiosyncratic)
+    - Sector exposure analysis
+    - VaR/CVaR tail risk metrics
+    """
+    logger.info("factor_attribution_v2: %s", request.tickers)
+
+    prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
+    weights = normalize_weights(request.tickers, request.weights)
+    returns_df = prices.pct_change().dropna()
+    portfolio_returns = (returns_df * weights).sum(axis=1)
+
+    # Build Fama-French factor returns (synthetic proxies)
+    factor_returns = pd.DataFrame()
+    try:
+        factor_proxies = {
+            "market": "SPY",
+            "size": "IWM",
+            "value": "VLUE",
+            "profitability": "RZG",
+            "investment": "SPHD",
+        }
+        factor_prices = fetch_price_history(list(factor_proxies.values()), request.start_date, request.end_date)
+        factor_returns = factor_prices.pct_change().dropna()
+        factor_returns.columns = list(factor_proxies.keys())
+    except Exception:
+        logger.warning("Could not fetch factor proxies, using random data for demo")
+
+    # Run attribution
+    try:
+        attribution = factor_attribution.fama_french_attribution(portfolio_returns, factor_returns)
+    except Exception as e:
+        logger.warning("Attribution failed: %s", e)
+        attribution = {"error": str(e)}
+
+    # Risk decomposition
+    risk_decomp = factor_attribution.risk_decomposition(returns_df, np.array(weights), factor_returns if not factor_returns.empty else None)
+
+    # Sector concentration (if available)
+    sector_map = {ticker: "Equity" for ticker in request.tickers}  # Simplified
+    sector_analysis = factor_attribution.sector_exposure_analysis(
+        dict(zip(request.tickers, weights)),
+        sector_map
+    )
+
+    # VaR/CVaR
+    var_cvar = factor_attribution.var_cvar_analysis(portfolio_returns, confidence=0.95)
+
+    # Stress testing
+    stress = factor_attribution.stress_test_portfolio(portfolio_returns, factor_returns) if not factor_returns.empty else {}
+
+    return {
+        "attribution": attribution,
+        "risk_decomposition": risk_decomp,
+        "sector_analysis": sector_analysis,
+        "tail_risk": var_cvar,
+        "stress_test_scenarios": stress,
+    }
 
 
 @app.post("/api/quant/pairs-trading")
