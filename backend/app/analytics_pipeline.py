@@ -259,14 +259,21 @@ def _build_payload(port_returns: pd.Series, bench_returns: Optional[pd.Series], 
   bench_aligned = None
   if bench_returns is not None:
     bench_aligned = bench_returns.reindex(port_returns.index).ffill().bfill()
+
+  # Ensure we don't rely on ambiguous truthiness for DataFrames
+  if asset_returns is None or getattr(asset_returns, "empty", False):
+    asset_returns_clean = pd.DataFrame()
+  else:
+    asset_returns_clean = asset_returns
+
   summary = _summary(port_returns, bench_aligned)
   equity = _equity_from_returns(port_returns)
   bench_equity = _equity_from_returns(bench_aligned) if bench_aligned is not None else None
   drawdowns = _drawdown_series(port_returns)
-  factors = _factor_model(port_returns, bench_aligned, asset_returns or pd.DataFrame())
-  corr = _correlation_matrix(asset_returns or pd.DataFrame())
+  factors = _factor_model(port_returns, bench_aligned, asset_returns_clean)
+  corr = _correlation_matrix(asset_returns_clean)
   var_metrics = _var_cvar(port_returns)
-  attribution = _risk_attribution(asset_returns or pd.DataFrame(), weights if weights is not None else np.array([]), sectors)
+  attribution = _risk_attribution(asset_returns_clean, weights if weights is not None else np.array([]), sectors)
   distribution = _return_distribution(port_returns)
   monthly_rows = _monthly_returns(port_returns)
   return {

@@ -461,10 +461,12 @@ def backtest(request: BacktestRequest) -> BacktestResponse:
 @app.post("/api/v1/pm/backtest", response_model=PMBacktestResponse, responses={400: {"model": ApiError}})
 def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
-    weights = normalize_weights(request.tickers, request.weights)
+    # Normalize to numpy for consistency; accept None or list input.
+    weights_list = normalize_weights(request.tickers, request.weights)
+    weights_array = np.asarray(weights_list, dtype=float)
 
     returns_df = prices.pct_change().dropna()
-    portfolio_returns, _ = apply_rebalance(returns_df, weights, request.rebalance_freq or "none")
+    portfolio_returns, _ = apply_rebalance(returns_df, weights_array, request.rebalance_freq or "none")
 
     benchmark_symbol = request.benchmark or "SPY"
     bench_prices = fetch_price_history([benchmark_symbol], request.start_date, request.end_date)
@@ -485,7 +487,7 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
     # Full analytics payload reused for risk/diagnostics
     analytics_payload = backtest_analytics(
         request.tickers,
-        weights.tolist(),
+        weights_array.tolist(),
         benchmark_symbol,
         request.start_date,
         request.end_date,
@@ -495,7 +497,7 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
 
     run_id = _persist_run(
         "pm_backtest",
-        {"tickers": request.tickers, "weights": weights, "rebalance_freq": request.rebalance_freq or "none", "benchmark": benchmark_symbol},
+        {"tickers": request.tickers, "weights": weights_array.tolist(), "rebalance_freq": request.rebalance_freq or "none", "benchmark": benchmark_symbol},
         portfolio_returns,
         summary,
         meta={"label": f"PM {request.tickers}", "benchmark": benchmark_symbol},
