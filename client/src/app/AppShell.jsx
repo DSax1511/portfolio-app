@@ -6,6 +6,8 @@ import { portfolioApi } from "../services/portfolioApi";
 import { apiBaseUrl } from "../services/apiClient";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
+import TopNav from "../components/layout/TopNav";
+import PositionUploadGuide from "../components/ui/PositionUploadGuide";
 import AboutPage from "../features/about/AboutPage";
 import RiskDiagnosticsPage from "../features/analytics/RiskDiagnosticsPage";
 import ContactPage from "../features/contact/ContactPage";
@@ -322,8 +324,8 @@ const AppContent = () => {
   const [uploadError, setUploadError] = useState("");
   const [demoMode, setDemoMode] = useState(false);
   const [activeDemo, setActiveDemo] = useState(null);
-  const [demoMenuOpen, setDemoMenuOpen] = useState(false);
   const [latestRiskPayload, setLatestRiskPayload] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
   const demoNotionalsRef = useRef(null);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -398,97 +400,37 @@ const AppContent = () => {
     fileInputRef.current?.click();
   };
 
+  const breadcrumb = (() => {
+    const path = location.pathname || "";
+    if (path.startsWith("/pm/dashboard")) return "Portfolio Management → Dashboard";
+    if (path.startsWith("/pm/allocation")) return "Portfolio Management → Allocation & Rebalance";
+    if (path.startsWith("/pm/historical")) return "Portfolio Management → Historical Analysis";
+    if (path.startsWith("/pm/risk")) return "Portfolio Management → Risk & Diagnostics";
+    if (path.startsWith("/quant/strategy")) return "Quant → Strategy Research";
+    if (path.startsWith("/quant/market-structure")) return "Quant → Market Structure";
+    if (path.startsWith("/quant/regimes")) return "Quant → Regimes";
+    if (path.startsWith("/quant/execution")) return "Quant → Execution Lab";
+    return "Home";
+  })();
+
   return (
     <div className="app-shell">
-      <header className="top-nav">
-        <div className="top-brand">
-          <span className="badge">Quant</span>
-          Portfolio Intelligence
-        </div>
-        <div className="top-actions">
-          <div style={{ position: "relative" }}>
-            <button
-              className="btn btn-ghost"
-              onClick={() => setDemoMenuOpen((o) => !o)}
-              title="Load realistic sample portfolios to explore analytics."
-            >
-              Demo portfolios
-            </button>
-            {demoMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  marginTop: 6,
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "12px",
-                  boxShadow: "var(--shadow-lg)",
-                  minWidth: 280,
-                  zIndex: 20,
-                  padding: "8px",
-                }}
-              >
-                {DEMO_PORTFOLIOS.map((demo) => (
-                  <button
-                    key={demo.id}
-                    className="btn btn-ghost"
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      justifyContent: "flex-start",
-                      marginBottom: "6px",
-                      borderColor: demo.id === activeDemo ? "rgba(79,140,255,0.5)" : "var(--border-subtle)",
-                      background: demo.id === activeDemo ? "rgba(79,140,255,0.12)" : "transparent",
-                    }}
-                    onClick={() => {
-                      loadDemoPortfolio(demo);
-                      setDemoMenuOpen(false);
-                    }}
-                    title={demo.description}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      <span style={{ fontWeight: 700 }}>{demo.name}</span>
-                      <span className="muted" style={{ fontSize: "12px" }}>
-                        {demo.description}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {demoMode && (
-            <button
-              className="btn"
-              onClick={toggleDemoPortfolio}
-              title="Return to your uploaded portfolio."
-              style={{
-                background: "rgba(246,70,93,0.16)",
-                border: "1px solid rgba(246,70,93,0.55)",
-                color: "var(--text-primary)",
-                boxShadow: "0 12px 30px rgba(246,70,93,0.25)",
-              }}
-            >
-              Turn off demo
-            </button>
-          )}
-          <button
-            className="btn btn-primary"
-            onClick={openFilePicker}
-            title="Upload a CSV of your own portfolio holdings."
-          >
-            {positionsLoading ? "Uploading..." : "Upload positions"}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            style={{ display: "none" }}
-            onChange={handleFileChange}
-          />
-        </div>
-      </header>
+      <TopNav
+        breadcrumb={breadcrumb}
+        positionsLoading={positionsLoading}
+        demoMode={demoMode}
+        onToggleDemo={toggleDemoPortfolio}
+        onUploadClick={openFilePicker}
+        onGuideClick={() => setShowGuide(true)}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <PositionUploadGuide open={showGuide} onClose={() => setShowGuide(false)} />
 
       <div className="app-body">
         <Sidebar />
@@ -512,6 +454,7 @@ const AppContent = () => {
                     onUploadClick={openFilePicker}
                     onToggleDemo={toggleDemoPortfolio}
                     demoMode={demoMode}
+                    onOpenGuide={() => setShowGuide(true)}
                   />
                 }
               />
