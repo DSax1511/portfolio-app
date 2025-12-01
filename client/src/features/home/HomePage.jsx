@@ -24,9 +24,6 @@ const HomePage = () => {
               <li>Quant Lab for backtesting, microstructure, and regime analysis</li>
               <li>API-first FastAPI backend with React/Tailwind frontend, containerized with Docker</li>
             </ul>
-            <p className="muted" style={{ marginTop: "6px" }}>
-              For more details, see the About and Contact sections in the sidebar.
-            </p>
           </div>
         </Card>
 

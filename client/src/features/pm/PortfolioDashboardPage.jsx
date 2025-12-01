@@ -283,11 +283,24 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
         const data = demoMode ? await portfolioApi.getPMBacktestDemo() : await portfolioApi.runPMBacktest(payload);
         setPmPerf(data);
         setPmPerfError("");
-      } catch (err) {
-        console.error("PM backtest request failed", { error: err, url: err?.url, status: err?.status });
-        const friendly = err?.isNetworkError
-          ? `Unable to reach the backtest API. Make sure the backend is running on ${err?.url || apiBaseUrl}.`
-          : err?.message || "Backtest unavailable";
+      } catch (error) {
+        let message = "Unable to reach the backtest API.";
+
+        // Handle axios-like or fetch-like error shapes from ApiClientError
+        if (error?.status) {
+          const status = error.status;
+          const text =
+            typeof error.details === "string"
+              ? error.details.slice(0, 200)
+              : JSON.stringify(error.details || {}).slice(0, 200);
+          message = `Backtest request failed (HTTP ${status}). Details: ${text}`;
+        } else if (error?.isNetworkError) {
+          message = "No response from API. Check that VITE_API_BASE_URL is set correctly and CORS is configured.";
+        } else if (error?.message) {
+          message = `Backtest error: ${error.message}`;
+        }
+
+        console.error("Backtest API error", error);
         if (demoMode) {
           setPmPerf(buildDemoBacktest());
           setPmPerfError("");
