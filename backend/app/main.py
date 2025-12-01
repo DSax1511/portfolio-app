@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import yfinance as yf
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import analytics, backtests, optimizers, commentary, optimizers_v2, covariance_estimation, factor_models, backtesting, quant_strategies, factor_attribution
@@ -50,6 +50,8 @@ from .config import settings
 from .data import fetch_price_history
 from .infra.logging_utils import log_run, timed
 from .infra.utils import IndicatorSpec, StrategyRule, normalize_weights, parse_number, weighted_portfolio_price
+from .infra.rate_limit import rate_limit_check
+from .core.errors import ErrorCode, ApiErrorResponse, error_response
 from .quant_microstructure import compute_microstructure
 from .models import (
     ApiError,
@@ -367,7 +369,10 @@ def _allocation_from_payload(request: PMAllocationRequest) -> PMAllocationRespon
 
 
 @app.post("/api/backtest", response_model=BacktestResponse, responses={400: {"model": ApiError}})
-def backtest(request: BacktestRequest) -> BacktestResponse:
+def backtest(request: BacktestRequest, http_request: Request) -> BacktestResponse:
+    # Rate limiting: expensive computational endpoint
+    rate_limit_check(http_request, "/api/backtest", settings.rate_limit_backtest)
+    
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
 
@@ -699,7 +704,10 @@ def risk_breakdown_endpoint(request: RiskBreakdownRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/monte-carlo")
-def monte_carlo(request: MonteCarloRequest) -> Dict[str, Any]:
+def monte_carlo(request: MonteCarloRequest, http_request: Request) -> Dict[str, Any]:
+    # Rate limiting: expensive Monte Carlo simulations
+    rate_limit_check(http_request, "/api/monte-carlo", settings.rate_limit_optimization)
+    
     logger.info("monte_carlo: tickers=%s horizon=%s sims=%s", request.tickers, request.horizon_days, request.simulations)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
@@ -723,7 +731,7 @@ def monte_carlo(request: MonteCarloRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/efficient-frontier")
-def efficient_frontier(request: FrontierRequest) -> Dict[str, Any]:
+def efficient_frontier(request: FrontierRequest, http_request: Request) -> Dict[str, Any]:
     """
     Compute efficient frontier using CVXPY-based convex optimization.
 
@@ -732,7 +740,12 @@ def efficient_frontier(request: FrontierRequest) -> Dict[str, Any]:
 
     Includes optional Ledoit-Wolf covariance shrinkage for improved estimation in
     high-dimensional settings (many assets, limited history).
+    
+    Rate limit: 20 requests per minute per client IP.
     """
+    # Rate limiting: expensive computational endpoint
+    rate_limit_check(http_request, "/api/efficient-frontier", settings.rate_limit_optimization)
+    
     logger.info("efficient_frontier: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     rets = prices.pct_change().dropna()

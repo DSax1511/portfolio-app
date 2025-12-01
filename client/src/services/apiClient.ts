@@ -1,19 +1,44 @@
 /**
- * API base URL resolution:
- * - In Vercel/production, set VITE_API_BASE_URL to the Render backend (e.g., https://portfolio-app-6lfb.onrender.com).
- * - In local dev, leave unset and it will fall back to http://localhost:8000 when running on localhost/127.0.0.1.
- * - In any other hostname (e.g., custom domain) with no env var, default to the Render backend URL.
+ * API base URL resolution (improved for production deployments):
+ * 
+ * Priority order:
+ * 1. VITE_API_BASE_URL environment variable (set in .env or deployment config)
+ * 2. Same origin (recommended for production - backend served from same domain)
+ * 3. Localhost fallback for local dev (http://localhost:8000)
+ * 
+ * Usage:
+ * - Local dev: No env var needed, auto-detects localhost:8000
+ * - Docker Compose: Set VITE_API_BASE_URL=http://backend:8000 in frontend service
+ * - Production (same origin): Set VITE_API_BASE_URL=/api or leave unset
+ * - Production (separate domain): Set VITE_API_BASE_URL=https://backend.example.com
  */
 const resolveApiBase = () => {
+  // 1. Check explicit environment variable
   const envBase = import.meta.env.VITE_API_BASE_URL;
-  if (envBase) return envBase.trim().replace(/\/$/, "");
+  if (envBase) {
+    const trimmed = envBase.trim().replace(/\/$/, "");
+    console.log("[API] Using VITE_API_BASE_URL:", trimmed);
+    return trimmed;
+  }
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // 2. Local dev detection
     if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8000";
+      const localUrl = "http://localhost:8000";
+      console.log("[API] Local dev detected, using:", localUrl);
+      return localUrl;
     }
+
+    // 3. Same-origin backend (recommended for production)
+    const sameOriginUrl = `${protocol}//${host}`;
+    console.log("[API] Using same-origin backend:", sameOriginUrl);
+    return sameOriginUrl;
   }
-  return "https://portfolio-app-6lfb.onrender.com";
+
+  throw new Error("Could not determine API base URL");
 };
 
 export const apiBaseUrl = resolveApiBase();

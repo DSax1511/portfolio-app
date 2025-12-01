@@ -17,6 +17,12 @@ services:
     environment:
       # Override with ./backend/.env if present
       DATABASE_URL: postgres://portfolio:portfolio@db:5432/portfolio
+      # Rate limiting configuration
+      RATE_LIMIT_BACKTEST: "10"
+      RATE_LIMIT_OPTIMIZATION: "20"
+      RATE_LIMIT_REQUESTS: "100"
+      # Environment indicator
+      ENVIRONMENT: "development"
     env_file:
       - ./backend/.env
     depends_on:
@@ -28,9 +34,12 @@ services:
     build:
       context: ./client
       args:
-        # The browser hits the backend via host-mapped port
-        VITE_API_BASE_URL: http://localhost:8000
+        # For Docker Compose: backend service name is 'backend'
+        VITE_API_BASE_URL: http://backend:8000
     container_name: portfolio-frontend
+    environment:
+      # Override with ./client/.env if present
+      VITE_API_BASE_URL: http://localhost:8000
     depends_on:
       - backend
     ports:
