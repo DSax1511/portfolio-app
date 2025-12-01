@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 import ErrorBanner from "../../components/ui/ErrorBanner";
+import Spinner from "../../components/ui/Spinner";
 import { usePortfolioAnalytics } from "../../state/portfolioAnalytics";
 import { useActiveRun } from "../../state/activeRun";
 
@@ -225,6 +226,12 @@ const HistoricalAnalysisPage = ({ onRunComplete }) => {
             </button>
           </form>
         </Card>
+
+        {loading && (
+          <Card title="Running Analysis" subtitle="Computing portfolio metrics...">
+            <Spinner size="lg" label="Fetching price data and calculating performance metrics..." />
+          </Card>
+        )}
 
         {backtestAnalytics && (
           <Card title="Performance Summary" subtitle="Key metrics vs benchmark">

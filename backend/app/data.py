@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import logging
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -13,28 +15,68 @@ from fastapi import HTTPException
 from .config import settings
 from .infra.utils import parse_date
 
+logger = logging.getLogger(__name__)
+
 
 def _cache_path(ticker: str) -> Path:
   return settings.data_cache_dir / f"{ticker.upper()}.parquet"
 
 
-def _fetch_from_yf_sync(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
-    """Synchronous yfinance fetch (used in thread executor for non-blocking I/O)."""
-    data = yf.download(
-        tickers=[ticker],
-        start=start,
-        end=end,
-        progress=False,
-        auto_adjust=True,
-        group_by="ticker",
-    )
-    if data.empty:
-        return pd.Series(dtype=float)
-    if isinstance(data.columns, pd.MultiIndex):
-        close = data.loc[:, (slice(None), "Close")]
-        close.columns = [c[0] for c in close.columns]
-        return close.iloc[:, 0]
-    return data["Close"]
+def _fetch_from_yf_sync(
+    ticker: str,
+    start: dt.date,
+    end: Optional[dt.date],
+    max_retries: int = 3,
+    base_delay: float = 1.0
+) -> pd.Series:
+    """
+    Synchronous yfinance fetch with exponential backoff retry logic.
+
+    Args:
+        ticker: Stock ticker symbol
+        start: Start date for historical data
+        end: End date for historical data
+        max_retries: Maximum number of retry attempts (default: 3)
+        base_delay: Base delay in seconds for exponential backoff (default: 1.0)
+
+    Returns:
+        pandas Series with price data, or empty Series if all retries fail
+    """
+    for attempt in range(max_retries):
+        try:
+            data = yf.download(
+                tickers=[ticker],
+                start=start,
+                end=end,
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+            )
+            if data.empty:
+                logger.warning(f"No data returned for {ticker} (attempt {attempt + 1}/{max_retries})")
+                return pd.Series(dtype=float)
+
+            # Extract Close prices
+            if isinstance(data.columns, pd.MultiIndex):
+                close = data.loc[:, (slice(None), "Close")]
+                close.columns = [c[0] for c in close.columns]
+                return close.iloc[:, 0]
+            return data["Close"]
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Exponential backoff: 1s, 2s, 4s, 8s, ...
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                time.sleep(delay)
+            else:
+                logger.error(f"Failed to fetch {ticker} after {max_retries} attempts: {e}")
+                return pd.Series(dtype=float)
+
+    return pd.Series(dtype=float)
 
 
 async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
@@ -57,18 +99,62 @@ def _synthetic_price_series(ticker: str, start: dt.date, end: Optional[dt.date])
     )
 
 
-def _load_cached(ticker: str) -> pd.Series:
+def _load_cached(ticker: str, ttl_hours: int = 24) -> pd.Series:
+    """
+    Load cached price data with TTL (time-to-live) validation.
+
+    Args:
+        ticker: Stock ticker symbol
+        ttl_hours: Cache TTL in hours (default: 24). Set to 0 to disable TTL check.
+
+    Returns:
+        Cached price series if valid, otherwise empty Series
+    """
     path = _cache_path(ticker)
     if not path.exists():
         return pd.Series(dtype=float)
+
     try:
+        # Check cache staleness
+        if ttl_hours > 0:
+            cache_mtime = dt.datetime.fromtimestamp(path.stat().st_mtime)
+            cache_age = dt.datetime.now() - cache_mtime
+            if cache_age > dt.timedelta(hours=ttl_hours):
+                logger.info(
+                    f"Cache for {ticker} is stale (age: {cache_age.total_seconds() / 3600:.1f}h). "
+                    f"TTL: {ttl_hours}h"
+                )
+                return pd.Series(dtype=float)
+
+        # Load and validate cached data
         series = pd.read_parquet(path)
         if isinstance(series, pd.DataFrame):
             series = series.iloc[:, 0]
         series.index = pd.to_datetime(series.index)
         series.name = ticker
+
+        # Validate data quality
+        if series.empty:
+            logger.warning(f"Cached data for {ticker} is empty")
+            return pd.Series(dtype=float)
+
+        # Check for recent data (ensure cache includes recent trading days)
+        latest_date = series.index.max()
+        today = dt.datetime.now().date()
+        days_old = (today - latest_date.date()).days
+
+        # If data is more than 5 trading days old, consider it stale
+        if days_old > 7:
+            logger.warning(
+                f"Cached data for {ticker} is outdated. Latest: {latest_date.date()}, "
+                f"Days old: {days_old}"
+            )
+            return pd.Series(dtype=float)
+
         return series.sort_index()
-    except Exception:
+
+    except Exception as e:
+        logger.error(f"Failed to load cache for {ticker}: {e}")
         return pd.Series(dtype=float)
 
 

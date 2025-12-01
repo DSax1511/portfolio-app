@@ -25,20 +25,67 @@ def _drawdown_series(rets: pd.Series) -> pd.DataFrame:
 
 
 def _top_drawdowns(drawdowns: pd.DataFrame, top_n: int = 5) -> List[Dict[str, Any]]:
+  """
+  Identify the top N distinct drawdown periods.
+
+  A drawdown period is defined as:
+  - Start: New peak (drawdown crosses 0 from below)
+  - Trough: Maximum drawdown depth
+  - Recovery: Drawdown returns to 0 (or end of series)
+
+  Returns the top_n deepest drawdown periods, sorted by depth.
+  """
   if drawdowns.empty:
     return []
-  min_depth = drawdowns["drawdown"].min()
-  trough_idx = drawdowns["drawdown"].idxmin()
-  start_idx = drawdowns.loc[:trough_idx, "drawdown"].idxmax()
-  recovery_mask = drawdowns.loc[trough_idx:, "drawdown"] >= 0
-  recovery_idx = recovery_mask.idxmax() if recovery_mask.any() else None
-  window = {
-    "startDate": drawdowns.loc[start_idx, "date"] if start_idx is not None else None,
-    "troughDate": drawdowns.loc[trough_idx, "date"] if trough_idx is not None else None,
-    "recoveryDate": drawdowns.loc[recovery_idx, "date"] if recovery_idx is not None else None,
-    "depth": float(min_depth),
-  }
-  return [window][:top_n]
+
+  dd_series = drawdowns.set_index("date")["drawdown"] if "date" in drawdowns.columns else drawdowns["drawdown"]
+
+  # Identify distinct drawdown periods
+  periods = []
+  in_drawdown = False
+  start_idx = None
+  trough_idx = None
+  trough_depth = 0.0
+
+  for i, (idx, dd) in enumerate(dd_series.items()):
+    if dd < 0:
+      if not in_drawdown:
+        # Start of new drawdown
+        in_drawdown = True
+        start_idx = idx
+        trough_idx = idx
+        trough_depth = dd
+      else:
+        # Update trough if deeper
+        if dd < trough_depth:
+          trough_idx = idx
+          trough_depth = dd
+    else:
+      if in_drawdown:
+        # End of drawdown (recovery)
+        periods.append({
+          "startDate": str(start_idx) if start_idx is not None else None,
+          "troughDate": str(trough_idx) if trough_idx is not None else None,
+          "recoveryDate": str(idx),
+          "depth": float(trough_depth),
+        })
+        in_drawdown = False
+        start_idx = None
+        trough_idx = None
+        trough_depth = 0.0
+
+  # Handle ongoing drawdown at end of series
+  if in_drawdown:
+    periods.append({
+      "startDate": str(start_idx) if start_idx is not None else None,
+      "troughDate": str(trough_idx) if trough_idx is not None else None,
+      "recoveryDate": None,  # No recovery yet
+      "depth": float(trough_depth),
+    })
+
+  # Sort by depth (most negative first) and return top N
+  periods.sort(key=lambda x: x["depth"])
+  return periods[:top_n]
 
 
 def _monthly_returns(rets: pd.Series) -> List[Dict[str, Any]]:
