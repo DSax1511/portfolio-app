@@ -99,8 +99,8 @@ const TopNav = ({
         </div>
       </div>
 
-      {/* CENTER: Market Status Ticker (hidden on mobile) */}
-      <div className="hidden md:flex justify-center">
+      {/* LEFT: Market Status Ticker (hidden on mobile) */}
+      <div className="hidden md:flex justify-start">
         <MarketStatusTicker />
       </div>
 
