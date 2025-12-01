@@ -86,9 +86,13 @@ from .models import (
     StressTestRequest,
 )
 from .rebalance import position_sizing, suggest_rebalance
+from .market import router as market_router
 
 
 app = FastAPI(title="Portfolio Quant API", version="2.0.0")
+
+# Include market snapshot router
+app.include_router(market_router)
 
 # CORS origins:
 # - Local dev: Vite/React ports and FastAPI default port.

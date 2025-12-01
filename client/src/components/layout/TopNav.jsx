@@ -1,5 +1,5 @@
 import React from "react";
-import MarketStatus from "./MarketStatus";
+import MarketStatusTicker from "./MarketStatusTicker";
 
 const Icon = ({ children, size = 18 }) => (
   <svg
@@ -99,9 +99,9 @@ const TopNav = ({
         </div>
       </div>
 
-      {/* CENTER: Market Status (hidden on mobile) */}
+      {/* CENTER: Market Status Ticker (hidden on mobile) */}
       <div className="hidden lg:flex justify-center">
-        <MarketStatus />
+        <MarketStatusTicker />
       </div>
 
       {/* RIGHT: Action cluster */}
