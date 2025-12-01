@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -8,6 +9,8 @@ import pandas as pd
 
 from .data import fetch_price_history
 from . import commentary
+
+logger = logging.getLogger(__name__)
 
 
 def _equity_from_returns(rets: pd.Series) -> pd.Series:
@@ -432,63 +435,100 @@ def backtest_analytics(
     end: End date (YYYY-MM-DD)
     rebalance_freq: "none", "monthly", "quarterly", or "annual"
     trading_cost_bps: Trading cost in basis points per 100% turnover
+
+  Returns:
+    Dict with comprehensive analytics payload including:
+      - summary: Performance metrics
+      - equity_curve: Portfolio equity curve
+      - benchmark_curve: Benchmark equity curve (if benchmark provided)
+      - relative_curve: Relative performance vs benchmark
+      - ... other analytics
+
+  Raises:
+    ValueError: If insufficient data or invalid inputs
   """
-  price_hist = fetch_price_history(tickers, start, end)
-  weight_arr = np.array(weights) if weights is not None else np.full(len(tickers), 1 / len(tickers))
-  weight_arr = weight_arr / weight_arr.sum()
-  returns_df = price_hist.pct_change().dropna()
+  try:
+    price_hist = fetch_price_history(tickers, start, end)
+    if price_hist.empty:
+      logger.warning(f"No price history available for {tickers} from {start} to {end}")
+      raise ValueError("No price data available for the requested tickers and date range")
+    
+    weight_arr = np.array(weights) if weights is not None else np.full(len(tickers), 1 / len(tickers))
+    weight_arr = weight_arr / weight_arr.sum()
+    returns_df = price_hist.pct_change().dropna()
 
-  # Compute returns with rebalancing and costs
-  rebal_freq = rebalance_freq or "none"
-  net_returns, total_turnover, gross_returns = _compute_rebalanced_returns(
-    returns_df, weight_arr, rebal_freq, trading_cost_bps
-  )
+    if returns_df.empty:
+      logger.error("Returns DataFrame is empty after pct_change()")
+      raise ValueError("Unable to compute returns from price history")
 
-  # Use net returns for main analysis
-  port_returns = net_returns
+    # Compute returns with rebalancing and costs
+    rebal_freq = rebalance_freq or "none"
+    net_returns, total_turnover, gross_returns = _compute_rebalanced_returns(
+      returns_df, weight_arr, rebal_freq, trading_cost_bps
+    )
 
-  # Compute gross metrics for comparison
-  gross_summary = _summary(gross_returns, None) if trading_cost_bps > 0 else {}
+    # Use net returns for main analysis
+    port_returns = net_returns
 
-  bench_returns = None
-  if benchmark:
-    bench_prices = fetch_price_history([benchmark], start, end)
-    bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
+    # Compute gross metrics for comparison
+    gross_summary = _summary(gross_returns, None) if trading_cost_bps > 0 else {}
 
-  payload = _build_payload(
-    port_returns,
-    bench_returns,
-    {
-      "tickers": tickers,
-      "weights": weight_arr.tolist(),
-      "benchmark": benchmark,
-      "start_date": start,
-      "end_date": end,
-      "rebalance_freq": rebal_freq,
-      "trading_cost_bps": trading_cost_bps,
-    },
-    returns_df,
-    weight_arr,
-    None,
-  )
+    # Fetch and align benchmark data
+    bench_returns = None
+    if benchmark:
+      try:
+        bench_prices = fetch_price_history([benchmark], start, end)
+        if bench_prices.empty:
+          logger.warning(f"No benchmark data available for {benchmark}. Proceeding without benchmark.")
+        else:
+          bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
+          if bench_returns.empty:
+            logger.warning(f"Benchmark returns are empty after pct_change() for {benchmark}")
+            bench_returns = None
+      except Exception as e:
+        logger.warning(f"Failed to fetch benchmark {benchmark}: {e}. Proceeding without benchmark.")
+        bench_returns = None
 
-  # Add turnover and gross/net metrics
-  payload["summary"]["total_turnover"] = float(total_turnover)
-  if trading_cost_bps > 0:
-    payload["summary"]["gross_cagr"] = gross_summary.get("cagr", 0.0)
-    payload["summary"]["net_cagr"] = payload["summary"]["cagr"]
+    # Build payload with defensive checks
+    payload = _build_payload(
+      port_returns,
+      bench_returns,
+      {
+        "tickers": tickers,
+        "weights": weight_arr.tolist(),
+        "benchmark": benchmark,
+        "start_date": start,
+        "end_date": end,
+        "rebalance_freq": rebal_freq,
+        "trading_cost_bps": trading_cost_bps,
+      },
+      returns_df,
+      weight_arr,
+      None,
+    )
 
-    # Compute asset contributions
-    avg_weights = weight_arr
-    asset_returns_annual = returns_df.mean() * 252
-    asset_contribs = []
-    for i, ticker in enumerate(tickers):
-      contrib_return = avg_weights[i] * asset_returns_annual.iloc[i]
-      asset_contribs.append({
-        "ticker": ticker,
-        "avg_weight": float(avg_weights[i]),
-        "contribution_to_return": float(contrib_return),
-      })
-    payload["asset_contributions"] = asset_contribs
+    # Add turnover and gross/net metrics
+    payload["summary"]["total_turnover"] = float(total_turnover)
+    if trading_cost_bps > 0:
+      payload["summary"]["gross_cagr"] = gross_summary.get("cagr", 0.0)
+      payload["summary"]["net_cagr"] = payload["summary"]["cagr"]
 
-  return payload
+      # Compute asset contributions
+      avg_weights = weight_arr
+      asset_returns_annual = returns_df.mean() * 252
+      asset_contribs = []
+      for i, ticker in enumerate(tickers):
+        contrib_return = avg_weights[i] * asset_returns_annual.iloc[i]
+        asset_contribs.append({
+          "ticker": ticker,
+          "avg_weight": float(avg_weights[i]),
+          "contribution_to_return": float(contrib_return),
+        })
+      payload["asset_contributions"] = asset_contribs
+
+    logger.info(f"Successfully generated backtest analytics for {tickers} from {start} to {end}")
+    return payload
+
+  except Exception as e:
+    logger.error(f"Error in backtest_analytics: {e}", exc_info=True)
+    raise
