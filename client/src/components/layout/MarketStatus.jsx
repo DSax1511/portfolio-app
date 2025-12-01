@@ -60,19 +60,25 @@ export function MarketStatus() {
   });
 
   const statusLabel = isUsMarketOpen
-    ? "US Market: Open"
-    : "US Market: Closed · 4:00 PM ET";
+    ? "US MARKET: OPEN"
+    : "US MARKET: CLOSED";
 
   const statusColor = isUsMarketOpen
     ? "text-emerald-400"
     : "text-slate-400";
 
+  const dotColor = isUsMarketOpen
+    ? "bg-emerald-400"
+    : "bg-slate-500";
+
   return (
-    <div className="flex flex-col items-center justify-center gap-0.5">
-      <span className="text-xs text-slate-500">{formattedDate}</span>
-      <span className={`text-xs font-medium ${statusColor}`}>
-        {statusLabel}
-      </span>
+    <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 shadow-sm shadow-black/40">
+      <span className="text-[11px] md:text-xs font-medium text-slate-300">{formattedDate}</span>
+      <span className="h-3 w-px bg-slate-700/70" />
+      <div className="flex items-center gap-1.5">
+        <span className={`h-2 w-2 rounded-full ${dotColor} ${isUsMarketOpen ? 'shadow-[0_0_6px_rgba(16,185,129,0.7)]' : ''}`} />
+        <span className={`text-[10px] md:text-[11px] tracking-wide font-semibold uppercase ${statusColor}`}>{statusLabel}</span>
+      </div>
     </div>
   );
 }
