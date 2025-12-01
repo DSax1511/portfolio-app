@@ -100,7 +100,7 @@ const TopNav = ({
       </div>
 
       {/* CENTER: Market Status Ticker (hidden on mobile) */}
-      <div className="hidden lg:flex justify-center">
+      <div className="hidden md:flex justify-center">
         <MarketStatusTicker />
       </div>
 

@@ -103,65 +103,63 @@ export const MarketStatusTicker = () => {
   }
 
   return (
-    <div className="inline-flex flex-col gap-1 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-2 shadow-[0_0_24px_rgba(15,23,42,0.7)] text-xs md:text-[13px] min-w-[260px] max-w-[360px] pointer-events-auto">
-      {/* Top row: status + date */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+    <div className="inline-flex flex-col gap-1.5 rounded-2xl border border-slate-800 bg-slate-900/85 px-4 py-2 shadow-[0_0_24px_rgba(15,23,42,0.7)] text-xs min-w-[280px] max-w-[360px]">
+      {/* Top line: date + market status */}
+      <div className="flex items-center gap-2">
+        <span className="text-slate-200 font-medium whitespace-nowrap">
+          {formattedDate}
+        </span>
+        <span className="text-slate-600">·</span>
+        <div className="flex items-center gap-1.5">
           <span
             className={`inline-block h-2.5 w-2.5 rounded-full ${
               marketOpen
-                ? "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.7)]"
+                ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
                 : "bg-slate-500"
             }`}
           />
           <span
-            className={`uppercase tracking-wide font-semibold text-[10px] md:text-[11px] ${
+            className={`uppercase tracking-wide font-semibold text-[11px] ${
               marketOpen ? "text-emerald-300" : "text-slate-400"
             }`}
           >
             US MARKET: {marketOpen ? "OPEN" : "CLOSED"}
           </span>
         </div>
-        <span className="whitespace-nowrap text-slate-300 font-medium">
-          {formattedDate}
-        </span>
       </div>
 
-      {/* Bottom row: indices + ticker + offline badge */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="uppercase text-[10px] tracking-wide text-slate-500">
-            Indices
+      {/* Bottom line: indices ticker */}
+      <div className="flex items-baseline gap-2">
+        <span className="uppercase text-[10px] tracking-wide text-slate-500">
+          Indices
+        </span>
+        <span className="text-slate-600">·</span>
+        <div
+          className={`flex items-baseline gap-1.5 min-w-0 transition-opacity duration-150 ${
+            fade ? "opacity-0" : "opacity-100"
+          }`}
+        >
+          <span className="font-semibold text-slate-100">
+            {activeTicker.symbol}
           </span>
-          <span className="text-slate-600">·</span>
-          <div
-            className={`flex items-baseline gap-1 min-w-0 transition-opacity duration-150 ${
-              fade ? "opacity-0" : "opacity-100"
+          <span className="text-slate-300">
+            {activeTicker.last.toFixed(2)}
+          </span>
+          <span
+            className={`font-medium ${
+              activeTicker.change_pct > 0
+                ? "text-emerald-400"
+                : activeTicker.change_pct < 0
+                ? "text-red-400"
+                : "text-slate-300"
             }`}
           >
-            <span className="font-semibold text-slate-100">
-              {activeTicker.symbol}
-            </span>
-            <span className="text-slate-300">
-              {activeTicker.last.toFixed(2)}
-            </span>
-            <span
-              className={`font-medium ${
-                activeTicker.change_pct > 0
-                  ? "text-emerald-400"
-                  : activeTicker.change_pct < 0
-                  ? "text-red-400"
-                  : "text-slate-300"
-              }`}
-            >
-              {activeTicker.change_pct > 0 && "+"}
-              {activeTicker.change_pct.toFixed(2)}%
-            </span>
-          </div>
+            {activeTicker.change_pct > 0 && "+"}
+            {activeTicker.change_pct.toFixed(2)}%
+          </span>
         </div>
-
         {error && (
-          <span className="ml-2 rounded-full border border-slate-700 bg-slate-900 px-2 py-[2px] text-[10px] font-medium text-slate-400">
+          <span className="ml-auto rounded-full px-2 py-[2px] text-[10px] font-medium bg-red-950/70 border border-red-500/60 text-red-300">
             offline
           </span>
         )}
