@@ -20,12 +20,11 @@ const Icon = ({ children, size = 18 }) => (
  * Top navigation / global toolbar:
  * - Branding block with subtle gradient glow
  * - Breadcrumb for current context
- * - Action cluster (upload, guide, demo dropdown, demo badge)
+ * - Action cluster (import positions button, demo dropdown, demo badge)
  */
 const TopNav = ({
   breadcrumb,
   onUploadClick,
-  onGuideClick,
   positionsLoading,
   demoMode,
   demoPortfolios = [],
@@ -103,35 +102,19 @@ const TopNav = ({
 
       {/* RIGHT: Action cluster */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>
-        {/* Upload + format actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            className="btn btn-primary"
-            onClick={onUploadClick}
-            style={{ minWidth: "150px", display: "flex", gap: "8px", alignItems: "center" }}
-          >
-            <Icon>
-              <path d="M12 16V8" />
-              <path d="M8 12l4-4 4 4" />
-              <path d="M4 16h16" />
-            </Icon>
-            {positionsLoading ? "Uploading..." : "Upload positions"}
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={onGuideClick}
-            title="How to format files"
-            style={{ display: "flex", gap: "6px", alignItems: "center" }}
-          >
-            <Icon>
-              <path d="M12 6h0" />
-              <path d="M9 10h3" />
-              <path d="M9 14h6" />
-              <rect x="5" y="4" width="14" height="16" rx="2" ry="2" />
-            </Icon>
-            <span className="label-sm">How to format files</span>
-          </button>
-        </div>
+        {/* Import positions button */}
+        <button
+          className="btn btn-primary"
+          onClick={onUploadClick}
+          style={{ minWidth: "150px", display: "flex", gap: "8px", alignItems: "center" }}
+        >
+          <Icon>
+            <path d="M12 16V8" />
+            <path d="M8 12l4-4 4 4" />
+            <path d="M4 16h16" />
+          </Icon>
+          {positionsLoading ? "Importing..." : "Import positions"}
+        </button>
 
         {/* Demo dropdown + badge */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>

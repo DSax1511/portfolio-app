@@ -86,8 +86,7 @@ const buildDemoBacktest = () => {
   };
 };
 
-const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, demoMode, onOpenGuide }) => {
-  const safeOpenGuide = onOpenGuide || (() => {});
+const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onToggleDemo, demoMode }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
@@ -399,15 +398,8 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
     >
       {!hasPortfolio && (
         <EmptyState
-          title="Upload positions or load demo to see analytics."
-          description={
-            <>
-              Your metrics and charts will appear here once data is loaded.{" "}
-              <button className="btn btn-link" type="button" onClick={safeOpenGuide} style={{ padding: 0, marginLeft: 4 }}>
-                View format guide
-              </button>
-            </>
-          }
+          title="Import positions or load demo to see analytics."
+          description="Your metrics and charts will appear here once data is loaded."
         />
       )}
 

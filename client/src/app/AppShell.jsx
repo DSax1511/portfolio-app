@@ -7,7 +7,7 @@ import { apiBaseUrl } from "../services/apiClient";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import TopNav from "../components/layout/TopNav";
-import PositionUploadGuide from "../components/ui/PositionUploadGuide";
+import ImportPositionsModal from "../features/pm/components/ImportPositionsModal";
 import AboutPage from "../features/about/AboutPage";
 import MathEnginePage from "../features/about/MathEnginePage";
 import RiskDiagnosticsPage from "../features/analytics/RiskDiagnosticsPage";
@@ -324,15 +324,13 @@ const AppContent = () => {
     setPositions,
   } = usePortfolioAnalytics();
   const [savedPortfolio, setSavedPortfolio] = useState([]);
-  const [positionsFile, setPositionsFile] = useState(null);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [demoMode, setDemoMode] = useState(false);
   const [activeDemo, setActiveDemo] = useState(null);
   const [latestRiskPayload, setLatestRiskPayload] = useState(null);
-  const [showGuide, setShowGuide] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const demoNotionalsRef = useRef(null);
-  const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const isPortfolioRoute = location.pathname.startsWith("/pm");
@@ -344,31 +342,32 @@ const AppContent = () => {
     }, {});
   }
 
-  const uploadPositions = async (fileOverride = null) => {
-    const fileToUse = fileOverride || positionsFile;
-    if (!fileToUse) return;
-
-    setPositionsLoading(true);
-    setUploadError("");
-    const formData = new FormData();
-    formData.append("file", fileToUse);
-
-    try {
-      if (demoMode) {
-        setDemoMode(false);
-        setActiveDemo(null);
-      }
-      const data = await portfolioApi.uploadPositions(formData);
-      setPositions(data);
-    } catch (err) {
-      console.error("Positions upload error:", err);
-      const msg = err?.isNetworkError
-        ? `Could not reach the API. Make sure the backend is running (${err?.url || apiBaseUrl}) or set VITE_API_BASE_URL.`
-        : err.message || "Positions upload failed. Confirm the API is reachable.";
-      setUploadError(msg);
-    } finally {
-      setPositionsLoading(false);
+  const handleImportSuccess = (summary, positions = null) => {
+    // Exit demo mode if active
+    if (demoMode) {
+      setDemoMode(false);
+      setActiveDemo(null);
     }
+
+    // If positions were provided (from manual entry), set them directly
+    if (positions) {
+      // Convert manual entry format to position format expected by the app
+      const formattedPositions = positions.map((p) => ({
+        ticker: p.ticker,
+        description: p.ticker,
+        quantity: p.quantity,
+        avg_cost: p.costBasis || 0,
+        current_price: 0, // Will be fetched
+        market_value: 0,
+        pnl: 0,
+      }));
+      setPositions(formattedPositions);
+    }
+
+    // Show success toast message
+    const message = `Imported ${summary.positionsCount} positions across ${summary.uniqueTickers} tickers. Benchmark: ${summary.benchmark}.`;
+    console.log("Import success:", message);
+    // You can integrate a toast notification library here if desired
   };
 
   const loadDemoPortfolio = (demo) => {
@@ -377,7 +376,6 @@ const AppContent = () => {
     }
     const baseValue = demoNotionalsRef.current?.[demo.id] || 100000;
     setPositions(buildDemoPositions(demo, baseValue));
-    setPositionsFile(null);
     setUploadError("");
     setDemoMode(true);
     setActiveDemo(demo.id);
@@ -397,15 +395,8 @@ const AppContent = () => {
     loadDemoPortfolio(DEMO_PORTFOLIOS[0]);
   };
 
-  const handleFileChange = (e) => {
-    if (e.target.files?.[0]) {
-      setPositionsFile(e.target.files[0]);
-      uploadPositions(e.target.files[0]);
-    }
-  };
-
-  const openFilePicker = () => {
-    fileInputRef.current?.click();
+  const openImportModal = () => {
+    setShowImportModal(true);
   };
 
   const breadcrumb = (() => {
@@ -431,17 +422,13 @@ const AppContent = () => {
         activeDemo={activeDemo}
         onSelectDemo={loadDemoPortfolio}
         onExitDemo={toggleDemoPortfolio}
-        onUploadClick={openFilePicker}
-        onGuideClick={() => setShowGuide(true)}
+        onUploadClick={openImportModal}
       />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv"
-        style={{ display: "none" }}
-        onChange={handleFileChange}
+      <ImportPositionsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportSuccess={handleImportSuccess}
       />
-      <PositionUploadGuide open={showGuide} onClose={() => setShowGuide(false)} />
 
       <div className="app-body">
         <Sidebar />
@@ -462,10 +449,9 @@ const AppContent = () => {
                   <PortfolioDashboardPage
                     portfolio={portfolio}
                     formatCurrency={formatCurrency}
-                    onUploadClick={openFilePicker}
+                    onUploadClick={openImportModal}
                     onToggleDemo={toggleDemoPortfolio}
                     demoMode={demoMode}
-                    onOpenGuide={() => setShowGuide(true)}
                   />
                 }
               />
