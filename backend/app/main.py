@@ -83,27 +83,34 @@ from .rebalance import position_sizing, suggest_rebalance
 
 app = FastAPI(title="Portfolio Quant API", version="2.0.0")
 
-# CORS origins: local dev defaults plus optional FRONTEND_ORIGIN/ADDITIONAL_ORIGINS
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
-ADDITIONAL_ORIGINS = os.getenv("ADDITIONAL_ORIGINS")  # comma-separated list
-# In production, set FRONTEND_ORIGIN to https://saxtonpi.com; ADDITIONAL_ORIGINS can include Vercel previews.
-origins = [
-    "http://localhost:4173",
-    "http://localhost:5173",
-    "http://localhost:3000",
-]
-if FRONTEND_ORIGIN:
-    origins.append(FRONTEND_ORIGIN)
-if ADDITIONAL_ORIGINS:
-    origins.extend([o.strip() for o in ADDITIONAL_ORIGINS.split(",") if o.strip()])
+# CORS origins:
+# - Local dev: Vite/React ports and FastAPI default port.
+# - Production: configure via BACKEND_CORS_ORIGINS env (comma-separated), e.g., https://saxtonpi.com, https://www.saxtonpi.com, Render backend URL.
+# - Vercel previews are allowed via allow_origin_regex to match https://*.vercel.app
+cors_env = os.getenv("BACKEND_CORS_ORIGINS")
+if cors_env:
+    origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+else:
+    origins = [
+        "http://localhost:4173",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://saxtonpi.com",
+        "https://www.saxtonpi.com",
+        "https://portfolio-app-6lfb.onrender.com",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Log effective CORS configuration for debugging (Render logs)
+logging.getLogger("uvicorn.error").info("CORS allow_origins=%s allow_origin_regex=%s", origins, r"https://.*\.vercel\.app")
 
 logger = logging.getLogger("app")
 if not logger.handlers:

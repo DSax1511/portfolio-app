@@ -1,5 +1,22 @@
-// API base URL is provided via VITE_API_BASE_URL (set in Vercel to the Render backend, e.g., https://portfolio-app-6lfb.onrender.com); fallback localhost for dev. Do not hard-code domains in code.
-export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+/**
+ * API base URL resolution:
+ * - In Vercel/production, set VITE_API_BASE_URL to the Render backend (e.g., https://portfolio-app-6lfb.onrender.com).
+ * - In local dev, leave unset and it will fall back to http://localhost:8000 when running on localhost/127.0.0.1.
+ * - In any other hostname (e.g., custom domain) with no env var, default to the Render backend URL.
+ */
+const resolveApiBase = () => {
+  const envBase = import.meta.env.VITE_API_BASE_URL;
+  if (envBase) return envBase.trim().replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+  }
+  return "https://portfolio-app-6lfb.onrender.com";
+};
+
+export const apiBaseUrl = resolveApiBase();
 
 export class ApiClientError extends Error {
   status?: number;
@@ -47,7 +64,7 @@ const handleRequest = async <T>(path: string, init: RequestInit) => {
     if (err instanceof ApiClientError) throw err;
     const isNetwork = err?.name === "TypeError" || err?.isNetworkError;
     const message = isNetwork
-      ? `Unable to reach the API at ${apiBaseUrl}. Verify the FastAPI backend is running and CORS allows this origin.`
+      ? `Unable to reach the API at ${apiBaseUrl}. This is usually a deployment or CORS issue.`
       : err?.message || "Request failed";
     throw new ApiClientError(message, { url, isNetworkError: isNetwork });
   }

@@ -113,12 +113,13 @@ VITE_API_BASE_URL is automatically wired to the backend container inside Docker.
 ⚙️ Environment Variables
 Backend
 Variable	Description
-FRONTEND_ORIGINS	Allowed CORS origins (comma-separated)
+BACKEND_CORS_ORIGINS	Comma-separated allowed CORS origins (defaults cover localhost, saxtonpi.com/www.saxtonpi.com, Render URL)
 DATA_CACHE_DIR	Price cache directory (default: app/data_cache)
 RUNS_DIR	Backtest output directory
 Frontend
 Variable	Description
-VITE_API_BASE_URL	URL of the FastAPI backend
+VITE_API_BASE_URL	URL of the FastAPI backend (set to Render backend in Vercel, e.g., https://portfolio-app-6lfb.onrender.com)
+Vercel: set VITE_API_BASE_URL to the Render backend. Render: set BACKEND_CORS_ORIGINS to include https://saxtonpi.com and https://www.saxtonpi.com (plus previews).
 🧪 Testing
 Backend Tests
 cd backend
