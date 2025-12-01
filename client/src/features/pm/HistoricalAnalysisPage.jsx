@@ -37,9 +37,20 @@ const metricFormat = (v, pct = false) => {
   return pct ? `${(v * 100).toFixed(2)}%` : v.toFixed(2);
 };
 
+const InfoIcon = ({ tooltip }) => (
+  <span
+    title={tooltip}
+    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-xs text-slate-300 cursor-help font-semibold"
+    style={{ marginLeft: "0.5rem", lineHeight: 1 }}
+  >
+    ?
+  </span>
+);
+
 const HistoricalAnalysisPage = ({ onRunComplete }) => {
   const [form, setForm] = useState(defaultForm);
   const [hoveredDate, setHoveredDate] = useState(null);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
   const { runBacktestAnalytics, backtestAnalytics, loading, error } = usePortfolioAnalytics();
   const { setActiveRun } = useActiveRun();
 
@@ -158,55 +169,127 @@ const HistoricalAnalysisPage = ({ onRunComplete }) => {
       <div className="analytics-grid">
         <Card title="Backtest Setup" subtitle="Configure your portfolio simulation">
           <form className="analytics-form" onSubmit={runBacktest}>
+            <div style={{ marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid rgba(100,116,139,0.3)" }}>
+              <button
+                type="button"
+                onClick={() => setShowHowItWorks(!showHowItWorks)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-link)",
+                  cursor: "pointer",
+                  fontSize: "0.95rem",
+                  fontWeight: "500",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <span>{showHowItWorks ? "▼" : "▶"}</span>
+                How this works
+              </button>
+              {showHowItWorks && (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    backgroundColor: "rgba(100,116,139,0.1)",
+                    borderRadius: "6px",
+                    fontSize: "0.9rem",
+                    lineHeight: "1.6",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <p>
+                    <strong>Backtesting</strong> simulates your portfolio over historical data. You provide the assets, weights, and rebalancing frequency, and the system calculates performance including trading costs.
+                  </p>
+                  <p style={{ marginTop: "0.75rem" }}>
+                    <strong>Key features:</strong> Portfolio is rebalanced on your chosen schedule (monthly, quarterly, annual, or never) back to target weights. Each rebalance incurs a trading cost based on turnover.
+                  </p>
+                  <p style={{ marginTop: "0.75rem" }}>
+                    <strong>Metrics</strong> include total return, annualized return (CAGR), volatility, Sharpe ratio, drawdowns, monthly hit rate, and factor attribution.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <label>
-              Tickers (comma-separated) <span className="required">*</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                Tickers (comma-separated) <span className="required">*</span>
+                <InfoIcon tooltip="Enter stock ticker symbols, e.g. SPY, QQQ, IWM. The system fetches daily prices from yfinance." />
+              </div>
               <input
                 value={form.tickers}
                 onChange={handleChange("tickers")}
                 placeholder="SPY, QQQ, IWM"
                 required
               />
+              <small className="muted">Example: SPY (S&P 500), QQQ (Nasdaq-100), IWM (Russell 2000)</small>
             </label>
+
             <label>
-              Weights (comma-separated, optional)
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                Weights (comma-separated, optional)
+                <InfoIcon tooltip="If empty, equal-weighted (each asset gets 1/n). If provided, must match ticker count. E.g. 50, 30, 20 → 50%, 30%, 20% after normalization." />
+              </div>
               <input
                 value={form.weights}
                 onChange={handleChange("weights")}
                 placeholder="Leave blank for equal weight"
               />
-              <small className="muted">If specified, must match ticker count. Will be normalized to sum to 1.</small>
+              <small className="muted">Leave blank for equal weight, or specify weights (e.g., 50, 30, 20). Weights auto-normalize to 100%.</small>
             </label>
+
             <label>
-              Benchmark
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                Benchmark
+                <InfoIcon tooltip="Ticker used as performance benchmark. Portfolio's excess return is calculated vs this. Default: SPY (S&P 500)." />
+              </div>
               <input
                 value={form.benchmark}
                 onChange={handleChange("benchmark")}
                 placeholder="SPY"
               />
-              <small className="muted">Ticker to compare against (default: SPY)</small>
+              <small className="muted">Ticker to compare against for excess returns (default: SPY)</small>
             </label>
+
             <div className="form-row">
               <label>
-                Start date
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  Start date
+                  <InfoIcon tooltip="Backtest period start. Earlier dates = more historical data but may not represent current market conditions." />
+                </div>
                 <input type="date" value={form.start_date} onChange={handleChange("start_date")} required />
               </label>
               <label>
-                End date
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  End date
+                  <InfoIcon tooltip="Backtest period end. Usually today or recent date." />
+                </div>
                 <input type="date" value={form.end_date} onChange={handleChange("end_date")} required />
               </label>
             </div>
+
             <label>
-              Rebalance frequency
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                Rebalance frequency
+                <InfoIcon tooltip="How often target weights are restored. More frequent = higher turnover & costs but keeps risk profile aligned. None = buy & hold." />
+              </div>
               <select value={form.rebalance_freq} onChange={handleChange("rebalance_freq")}>
                 <option value="none">None (Buy & Hold)</option>
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
                 <option value="annual">Annual</option>
               </select>
-              <small className="muted">How often to rebalance back to target weights</small>
+              <small className="muted">How often to rebalance back to target weights. More frequent rebalancing increases trading costs.</small>
             </label>
+
             <label>
-              Trading cost (basis points)
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                Trading cost (basis points)
+                <InfoIcon tooltip="Cost per 100% turnover. E.g., 10 bps = 0.10% of portfolio value per full rebalance. Typical: 5-25 bps depending on broker & asset type." />
+              </div>
               <input
                 type="number"
                 step="0.1"
@@ -215,7 +298,7 @@ const HistoricalAnalysisPage = ({ onRunComplete }) => {
                 onChange={handleChange("trading_cost_bps")}
                 placeholder="0"
               />
-              <small className="muted">Cost per 100% turnover. E.g., 10 = 0.10% per full rebalance</small>
+              <small className="muted">Cost per 100% turnover in basis points (bps). E.g., 10 = 0.10% friction per full rebalance.</small>
             </label>
 
             {validationError && <p className="error-text">{validationError}</p>}

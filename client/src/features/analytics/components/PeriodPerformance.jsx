@@ -44,19 +44,19 @@ const PeriodPerformance = ({ periods, stats, onExport }) => {
       <div className="stats-grid" style={{ marginBottom: "1rem" }}>
         <div className="stat-box">
           <p className="muted">Best</p>
-          <p>{formatPercent(stats?.best)}</p>
+          <p>{formatPercent(stats?.best_period_return)}</p>
         </div>
         <div className="stat-box">
           <p className="muted">Worst</p>
-          <p>{formatPercent(stats?.worst)}</p>
+          <p>{formatPercent(stats?.worst_period_return)}</p>
         </div>
         <div className="stat-box">
           <p className="muted">Average</p>
-          <p>{formatPercent(stats?.avg)}</p>
+          <p>{formatPercent(stats?.average_period_return)}</p>
         </div>
         <div className="stat-box">
           <p className="muted">Hit Rate</p>
-          <p>{stats?.hitRate == null ? "—" : `${(stats.hitRate * 100).toFixed(1)}%`}</p>
+          <p>{stats?.hit_rate_monthly == null ? "—" : `${(stats.hit_rate_monthly * 100).toFixed(1)}%`}</p>
         </div>
       </div>
       <div className="table-wrapper">

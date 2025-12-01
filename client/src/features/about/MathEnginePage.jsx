@@ -1,700 +1,611 @@
 import { useState } from "react";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
+import MathFormulaCard from "../../components/math/MathFormulaCard";
 
 const MathEnginePage = () => {
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeCategory, setActiveCategory] = useState("optimization");
 
-  // Calculation formulas extracted from mathematical documentation
-  const calculations = {
+  // ============================================================================
+  // CALCULATIONS DATA - Structured formula configs for all categories
+  // ============================================================================
+
+  const CALC_SECTIONS = {
     optimization: [
       {
-        name: "Markowitz Mean-Variance",
-        description: "Quadratic programming to minimize portfolio variance",
-        formula: "minimize w^T Σ w subject to μ^T w ≥ r_target, 1^T w = 1, 0 ≤ w ≤ cap",
-        components: [
-          "w ∈ ℝⁿ: Portfolio weights vector",
-          "Σ ∈ ℝⁿˣⁿ: Covariance matrix of returns",
-          "μ ∈ ℝⁿ: Expected returns vector",
-          "r_target: Target portfolio return",
-          "cap: Maximum weight per asset (concentration limit)"
+        title: "Minimum-Variance Portfolio",
+        formula: "minimize  w^T Σ w  subject to  1^T w = 1,  w ≥ 0",
+        description:
+          "Chooses weights that minimize total portfolio variance under fully-invested, long-only constraints.",
+        bullets: [
+          "Used by the Efficient Frontier view to plot minimum-variance portfolios.",
+          "Produces the leftmost point of the efficient frontier (lowest volatility).",
+          "Often exhibits extreme concentration in one or two low-volatility assets.",
         ],
+        implementation: "optimizers_v2.py:min_variance_weights_cvxpy()",
         solver: "CVXPY with OSQP",
-        complexity: "O(n³) for dense matrices, O(n²) for sparse"
       },
       {
-        name: "Maximum Sharpe Ratio",
-        description: "Reformulated as convex problem via substitution",
-        formula: "maximize μ^T y subject to y^T Σ y ≤ 1, 1^T y = κ, y ≥ 0",
-        components: [
-          "y = w / (1^T w): Normalized weights",
-          "κ = 1 / (1^T w): Scaling factor",
-          "Recover weights: w = y / κ"
+        title: "Maximum Sharpe Ratio Portfolio",
+        formula:
+          "maximize  μ^T y  subject to  y^T Σ y ≤ 1,  1^T y = κ,  y ≥ 0",
+        description:
+          "Reformulated as convex problem via substitution. Finds the tangency point of the capital allocation line.",
+        bullets: [
+          "Balances return and risk to maximize risk-adjusted performance.",
+          "Used to initialize the Efficient Frontier at the high-return end.",
+          "Solves via change of variables: y = w / (1^T w), then recover w = y / κ.",
         ],
-        solver: "CVXPY with Clarabel"
+        implementation: "optimizers_v2.py:max_sharpe_weights_cvxpy()",
+        solver: "CVXPY with Clarabel",
       },
       {
-        name: "Risk Parity",
-        description: "Equal risk contribution from each asset",
-        formula: "minimize Σ_i (w_i (Σw)_i - 1/n)² subject to 1^T w = 1, w ≥ 0",
-        components: [
-          "(Σw)ᵢ: Marginal risk contribution of asset i",
-          "w_i (Σw)ᵢ: Component risk contribution of asset i",
-          "Target: RC_i = w_i * (Σw)_i = constant for all i"
+        title: "Risk Parity Allocation",
+        formula:
+          "minimize  Σ_i (w_i (Σw)_i - 1/n)²  subject to  1^T w = 1,  w ≥ 0",
+        description:
+          "Equalizes each asset's contribution to total portfolio variance.",
+        bullets: [
+          "Each position contributes 1/n of the portfolio's total risk.",
+          "Reveals when a few assets dominate risk versus when risk is well-distributed.",
+          "Useful for allocating across diversified pools (equities, bonds, alternatives).",
         ],
-        implementation: "optimizers_v2.py:risk_parity_weights_cvxpy()"
+        implementation: "optimizers_v2.py:risk_parity_weights_cvxpy()",
       },
-      {
-        name: "Minimum Variance Portfolio",
-        description: "Minimize portfolio variance subject to constraints",
-        formula: "minimize w^T Σ w subject to 1^T w = 1, 0 ≤ w ≤ cap",
-        analyticalSolution: "w* = Σ⁻¹ 1 / (1^T Σ⁻¹ 1) [unconstrained]",
-        implementation: "optimizers_v2.py:min_variance_weights_cvxpy()"
-      }
     ],
     covariance: [
       {
-        name: "Sample Covariance",
-        description: "Baseline estimator - unbiased but high variance",
+        title: "Return Series Construction",
+        formula: "r_t = ln(P_t / P_{t-1})",
+        description:
+          "Converts daily prices to log-returns, which are approximately additive over time.",
+        bullets: [
+          "Log-returns avoid negative price issues and allow for statistical normality.",
+          "Returns are aligned with portfolio construction and risk metrics throughout SaxtonPI.",
+        ],
+      },
+      {
+        title: "Sample Covariance",
         formula: "Σ̂_sample = (1/T) Σ_{t=1}^T (r_t - μ̂)(r_t - μ̂)^T",
-        properties: [
-          "Unbiased: E[Σ̂_sample] = Σ",
-          "High variance when N is large relative to T",
-          "Can be ill-conditioned (large condition number)"
-        ]
+        description:
+          "Baseline unbiased covariance estimator. High variance when N > T.",
+        bullets: [
+          "Unbiased: E[Σ̂_sample] = Σ_true",
+          "Large N relative to T produces ill-conditioned matrices.",
+          "Can be singular or near-singular when T < N.",
+        ],
+        implementation: "covariance_estimation.py:sample_covariance()",
       },
       {
-        name: "Ledoit-Wolf Shrinkage",
-        description: "Reduces estimation error and guarantees positive definiteness",
+        title: "Ledoit-Wolf Shrinkage",
         formula: "Σ̂_LW = δ * F + (1 - δ) * Σ̂_sample",
-        components: [
-          "F: Shrinkage target (constant correlation model)",
-          "δ ∈ [0, 1]: Shrinkage intensity (analytically optimal)",
-          "F_ij = σ̂_i² if i=j, ρ̄ * σ̂_i * σ̂_j if i≠j"
+        description:
+          "Shrinks sample covariance toward a structured target to reduce estimation error.",
+        bullets: [
+          "Target F: constant-correlation model (ρ̄ · σ_i · σ_j off-diagonal).",
+          "Shrinkage coefficient δ analytically optimized to minimize E[||Σ̂_LW - Σ||²_F].",
+          "Recommended for N > 30 assets or T < 10N observations.",
+          "Always positive-definite and numerically stable.",
         ],
-        shrinkageTarget: "δ* = argmin E[||Σ̂_LW - Σ||²_F] computed analytically",
-        useCases: [
-          "N > 30 assets",
-          "T < 10 * N observations",
-          "High-frequency rebalancing"
-        ],
-        implementation: "covariance_estimation.py:ledoit_wolf_shrinkage()"
+        implementation: "covariance_estimation.py:ledoit_wolf_shrinkage()",
       },
       {
-        name: "Condition Number",
-        description: "Measure of numerical stability",
+        title: "Annualized Covariance",
+        formula: "Σ_annual = Σ_daily · 252",
+        description:
+          "Scales daily covariance by trading days per year to match annualized volatility and returns.",
+        bullets: [
+          "Used in all portfolio construction and risk calculations.",
+          "252 is the standard market convention for equity trading days.",
+        ],
+      },
+      {
+        title: "Condition Number",
         formula: "κ(Σ) = λ_max / λ_min",
-        interpretation: [
+        description:
+          "Measures numerical stability of a matrix. High κ → ill-conditioned → unstable optimization.",
+        bullets: [
           "κ < 10: Well-conditioned",
           "κ < 100: Acceptable",
-          "κ < 1000: Ill-conditioned (use shrinkage!)",
-          "κ > 1000: Severely ill-conditioned"
+          "κ < 1000: Ill-conditioned; consider regularization or shrinkage",
+          "κ > 1000: Severely ill-conditioned; shrinkage is essential",
         ],
-        impact: "High κ → small eigenvalues → numerical instability in optimization"
-      }
+      },
     ],
-    factorModels: [
+    factors: [
       {
-        name: "Fama-French 5-Factor Model",
-        description: "Multi-factor regression for risk attribution",
-        formula: "R_{i,t} - R_{f,t} = α_i + β_mkt(R_m,t - R_f,t) + β_smb SMB_t + β_hml HML_t + β_rmw RMW_t + β_cma CMA_t + ε_{i,t}",
-        factors: [
-          "Mkt-RF: Market excess return (systematic risk, ~market beta)",
-          "SMB: Small Minus Big (size premium, ~2-3% annualized)",
-          "HML: High Minus Low (value premium, ~3-4% annualized)",
-          "RMW: Robust Minus Weak (profitability premium, ~2-3%)",
-          "CMA: Conservative Minus Aggressive (investment premium, ~2-3%)"
+        title: "Fama-French 5-Factor Model",
+        formula:
+          "R_{i,t} - R_f = α + β_mkt(R_m - R_f) + β_smb·SMB + β_hml·HML + β_rmw·RMW + β_cma·CMA + ε_t",
+        description:
+          "Multi-factor regression decomposing portfolio returns into systematic and idiosyncratic components.",
+        bullets: [
+          "Market (MKT): Systematic equity risk, ~all beta.",
+          "Size (SMB): Small Minus Big premium, small-cap outperformance tendency.",
+          "Value (HML): High Minus Low premium, value outperformance tendency.",
+          "Profitability (RMW): Robust Minus Weak; profitable firms tend to outperform.",
+          "Investment (CMA): Conservative Minus Aggressive; low-investment firms outperform.",
+          "α: Unexplained alpha; large α may signal skill or data-fitting.",
         ],
-        interpretation: [
-          "α (alpha): Excess return not explained by factors",
-          "β (beta): Factor loading (sensitivity to factor)",
-          "t-statistic: t_j = β̂_j / SE(β̂_j) for hypothesis testing"
-        ],
-        implementation: "factor_models.py:fama_french_5factor_regression()"
+        implementation: "factor_models.py:fama_french_5factor_regression()",
       },
       {
-        name: "Variance Decomposition",
-        description: "Break down portfolio variance into factor vs idiosyncratic",
-        formula: "Var(R_i) = Σ_j Σ_k β_ij β_ik Cov(F_j, F_k) + Var(ε_i) = Factor Variance + Idio Variance",
-        components: [
-          "MC_j = β_j * (Cov(F) @ β)_j: Marginal contribution of factor j",
-          "CC_j = w_j * MC_j: Component contribution",
-          "% Factor Risk = (Factor Variance / Total Variance) * 100"
+        title: "Factor Variance Decomposition",
+        formula:
+          "Var(R) = Σ_j β_j (Cov(F))_j β_j^T + Var(ε) = Factor Var + Idio Var",
+        description:
+          "Breaks down portfolio risk into factor-driven versus idiosyncratic (unexplained) components.",
+        bullets: [
+          "Shows what fraction of portfolio volatility is explained by known factors.",
+          "Used in Risk & Diagnostics to visualize factor risk contribution.",
+          "High idiosyncratic risk may signal concentration or unique positioning.",
         ],
-        implementation: "factor_models.py:portfolio_factor_decomposition()"
-      }
+        implementation: "factor_models.py:portfolio_factor_decomposition()",
+      },
     ],
     blackLitterman: [
       {
-        name: "Black-Litterman Model",
-        description: "Combines prior returns with investor views",
-        posteriorReturns: "E[R | P, Q] = [(τΣ)⁻¹ + P^T Ω⁻¹ P]⁻¹ [(τΣ)⁻¹ μ_prior + P^T Ω⁻¹ Q]",
-        posteriorCovariance: "Cov[R | P, Q] = [(τΣ)⁻¹ + P^T Ω⁻¹ P]⁻¹",
-        parameters: [
-          "μ_prior: Prior expected returns (equilibrium or historical)",
-          "Σ: Covariance matrix",
-          "τ: Uncertainty in prior (typically 0.01 - 0.05)",
-          "P: Pick matrix (views on assets or portfolios)",
-          "Q: View vector (expected returns per views)",
-          "Ω: Diagonal matrix of view uncertainties (confidence)"
+        title: "Black-Litterman Model",
+        formula:
+          "μ_BL = Σ_BL · [ (τΣ)^{-1} μ_prior + P^T Ω^{-1} Q ]",
+        description:
+          "Combines an equilibrium prior with investor views to produce posterior expected returns.",
+        bullets: [
+          "μ_prior: Prior return estimates (e.g., market-implied from reverse optimization).",
+          "τ: Prior uncertainty (typically 0.01–0.05); lower τ → strong conviction in prior.",
+          "P: Pick matrix encoding which assets/factors your views concern.",
+          "Q: View vector, your expected returns for the picked positions.",
+          "Ω: Diagonal confidence in each view; lower values = higher confidence.",
+          "Posterior Σ_BL same as input Σ; only expected returns updated.",
         ],
-        example: "View: AAPL returns 15% next year → P=[1,0,0,...], Q=[0.15], Ω=[0.02²]",
-        implementation: "optimizers_v2.py:black_litterman()"
-      }
+        implementation: "optimizers_v2.py:black_litterman()",
+      },
     ],
     riskMetrics: [
       {
-        name: "Value at Risk (VaR)",
-        description: "Percentile-based loss metric",
-        parametricVaR: "VaR_α = μ - σ * Φ⁻¹(α)",
-        historicalVaR: "VaR_α = -Percentile(returns, α * 100)",
-        components: [
-          "α: Confidence level (e.g., 0.05 for 95% VaR)",
-          "Φ⁻¹: Inverse standard normal CDF",
-          "μ, σ: Portfolio mean and std dev"
-        ]
+        title: "Portfolio Variance & Volatility",
+        formula: "σ_p² = w^T Σ w,    σ_p = √(w^T Σ w)",
+        description:
+          "Core risk metric used throughout SaxtonPI for performance diagnostics and risk reports.",
+        bullets: [
+          "Σ: Annualized covariance matrix.",
+          "w: Portfolio weights vector.",
+          "σ_p: Annualized standard deviation of portfolio returns.",
+        ],
       },
       {
-        name: "Conditional Value at Risk (CVaR)",
-        description: "Expected loss given that loss exceeds VaR (coherent)",
-        formula: "CVaR_α = E[R | R ≤ -VaR_α]",
-        properties: [
-          "Coherent risk measure (unlike VaR)",
-          "Convex → can be used in optimization",
-          "Accounts for tail risk beyond VaR"
-        ]
-      }
+        title: "Sharpe Ratio",
+        formula: "Sharpe = (μ_p - r_f) / σ_p",
+        description:
+          "Risk-adjusted return metric: excess return per unit of risk. Higher is better.",
+        bullets: [
+          "μ_p: Portfolio annualized return.",
+          "r_f: Risk-free rate (typically 0 for simplicity in backtest context).",
+          "σ_p: Portfolio annualized volatility.",
+          "Used in Efficient Frontier and Risk & Diagnostics.",
+        ],
+      },
+      {
+        title: "Sortino Ratio",
+        formula: "Sortino = (μ_p - r_f) / σ_downside",
+        description:
+          "Like Sharpe, but penalizes only downside volatility (negative returns).",
+        bullets: [
+          "σ_downside: Annualized std dev of returns below zero.",
+          "Prefers strategies with low downside risk but high upside capture.",
+          "Reported in Risk & Diagnostics for balanced view of return quality.",
+        ],
+      },
+      {
+        title: "Maximum Drawdown",
+        formula: "DD_max = min_t (Eq_t / max_{s ≤ t} Eq_s - 1)",
+        description:
+          "Largest peak-to-trough decline in portfolio equity curve. Key risk metric.",
+        bullets: [
+          "Eq_t: Cumulative equity at time t.",
+          "Captures worst-case loss an investor would have experienced.",
+          "Used in Risk & Diagnostics and stress testing views.",
+        ],
+      },
+      {
+        title: "Value at Risk (VaR)",
+        formula:
+          "Parametric: VaR_α = μ - σ·Φ^{-1}(α)  |  Historical: VaR_α = Percentile(returns, α)",
+        description: "Tail risk metric: the α-quantile of the return distribution.",
+        bullets: [
+          "α: Confidence level; e.g., 0.05 for 95% VaR.",
+          "Parametric assumes normality; historical is model-free.",
+          "Reported for α = 0.05 (95% confidence) in stress testing.",
+        ],
+      },
+      {
+        title: "Conditional Value at Risk (CVaR)",
+        formula: "CVaR_α = E[R | R ≤ VaR_α]",
+        description:
+          "Expected loss given that loss exceeds VaR; coherent risk measure.",
+        bullets: [
+          "Unlike VaR, CVaR is subadditive and can be optimized directly.",
+          "Better captures tail risk when losses exceed VaR threshold.",
+          "Convex → can be used in constrained portfolio optimization.",
+        ],
+      },
     ],
     annualization: [
       {
-        name: "Returns Annualization",
-        daily2annual: "r_annual = (1 + r_daily)^252 - 1",
-        continuouslyCompounded: "r_annual = r_daily * 252"
+        title: "Returns Annualization",
+        formula: "r_annual = (1 + r_daily)^252 - 1",
+        description:
+          "Compound daily returns to annualized return assuming 252 trading days.",
+        bullets: [
+          "Used to convert daily backtest returns to CAGR.",
+          "Accounts for compounding effect of daily returns.",
+        ],
       },
       {
-        name: "Volatility Annualization",
-        daily2annual: "σ_annual = σ_daily * √252"
+        title: "Volatility Annualization",
+        formula: "σ_annual = σ_daily · √252",
+        description: "Scale daily volatility to annual scale.",
+        bullets: [
+          "Assumes returns are independent and identically distributed.",
+          "√252 ≈ 15.87; standard market convention.",
+        ],
       },
       {
-        name: "Covariance Annualization",
-        daily2annual: "Σ_annual = Σ_daily * 252"
+        title: "Covariance Annualization",
+        formula: "Σ_annual = Σ_daily · 252",
+        description: "Scale daily covariance to annual scale by multiplying by trading days.",
+        bullets: [
+          "Used to construct portfolio risk matrices from daily data.",
+          "Ensures consistency with annualized return and volatility.",
+        ],
       },
       {
-        name: "Sharpe Ratio Annualization",
-        formula: "Sharpe_annual = (μ_annual - r_f) / σ_annual = Sharpe_daily * √252"
-      }
-    ]
+        title: "Sharpe Ratio Annualization",
+        formula: "Sharpe_annual = Sharpe_daily · √252",
+        description: "Convert daily Sharpe to annualized Sharpe.",
+        bullets: [
+          "Simpler than recalculating from annualized parameters.",
+          "Useful for reporting backtests with daily signals.",
+        ],
+      },
+    ],
   };
 
-  const renderCalculations = () => {
-    let items = [];
-    switch (activeTab) {
-      case "optimization":
-        items = calculations.optimization;
-        break;
-      case "covariance":
-        items = calculations.covariance;
-        break;
-      case "factorModels":
-        items = calculations.factorModels;
-        break;
-      case "blackLitterman":
-        items = calculations.blackLitterman;
-        break;
-      case "riskMetrics":
-        items = calculations.riskMetrics;
-        break;
-      case "annualization":
-        items = calculations.annualization;
-        break;
-      default:
-        items = [];
-    }
+  // ============================================================================
+  // TAB STYLES & CONTROLS
+  // ============================================================================
 
-    return (
-      <div className="space-y-4">
-        {items.map((item, idx) => (
-          <Card key={idx} className="bg-slate-900/40 border border-slate-800">
-            <div>
-              <h3 className="font-semibold text-slate-100 text-lg">{item.name}</h3>
-              {item.description && (
-                <p className="text-sm text-slate-400 mt-2">{item.description}</p>
-              )}
+  const TabButton = ({ isActive, onClick, children }) => (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+        isActive
+          ? "bg-amber-500/80 text-white shadow-md"
+          : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
 
-              {item.formula && (
-                <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                  <p className="font-mono text-xs text-amber-300">{item.formula}</p>
-                </div>
-              )}
+  const CategoryButton = ({ isActive, onClick, children }) => (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+        isActive
+          ? "bg-amber-500/60 text-white border border-amber-400"
+          : "bg-slate-900 text-slate-400 border border-slate-700 hover:border-slate-600 hover:text-slate-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
 
-              {item.daily2annual && (
-                <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                  <p className="font-mono text-xs text-amber-300">{item.daily2annual}</p>
-                </div>
-              )}
+  // ============================================================================
+  // RENDER SECTIONS
+  // ============================================================================
 
-              {item.continuouslyCompounded && (
-                <div className="mt-2 p-3 bg-slate-950 rounded border border-slate-700">
-                  <p className="font-mono text-xs text-amber-300">{item.continuouslyCompounded}</p>
-                </div>
-              )}
+  const renderOverview = () => (
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Engine Overview */}
+      <Card className="bg-slate-900/60 border border-slate-800">
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Overview
+          </p>
+          <h2 className="text-2xl font-bold text-slate-100 mt-2">
+            Mathematical Engine
+          </h2>
+          <p className="text-slate-300 mt-4">
+            SaxtonPI is powered by a quantitative analytics engine written in Python. It computes portfolio risk, optimization, factor attribution, and stress testing—all in real time. Every chart, widget, and recommendation is backed by this same consistent mathematical foundation.
+          </p>
+        </div>
+      </Card>
 
-              {item.posteriorReturns && (
-                <>
-                  <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                    <p className="text-xs text-slate-300 mb-1">Posterior Expected Returns:</p>
-                    <p className="font-mono text-xs text-amber-300">{item.posteriorReturns}</p>
-                  </div>
-                  <div className="mt-2 p-3 bg-slate-950 rounded border border-slate-700">
-                    <p className="text-xs text-slate-300 mb-1">Posterior Covariance:</p>
-                    <p className="font-mono text-xs text-amber-300">{item.posteriorCovariance}</p>
-                  </div>
-                </>
-              )}
+      {/* Core Analytics */}
+      <div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Core Analytics
+          </p>
+          <h3 className="text-xl font-bold text-slate-100 mt-1">
+            Portfolio Risk & Diversification
+          </h3>
+        </div>
+        <Card>
+          <div className="space-y-4">
+            <p className="text-slate-300">
+              For any set of assets and historical returns, SaxtonPI:
+            </p>
+            <ul className="space-y-2 text-slate-400">
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Constructs return series:</strong> Converts daily prices to log-returns and annualizes covariance to match market conventions (×252).
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Computes risk metrics:</strong> Volatility (σ_p = √w^T Σ w), drawdowns, Sharpe ratio, Sortino ratio, and tail risk (VaR, CVaR).
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Decomposes risk:</strong> Shows which positions contribute most to portfolio volatility via marginal and component contribution analysis.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Reports correlation:</strong> Exposes covariance and correlation matrices to detect diversification breaks and regime shifts.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </Card>
+      </div>
 
-              {item.parametricVaR && (
-                <>
-                  <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                    <p className="text-xs text-slate-300 mb-1">Parametric VaR (Normal):</p>
-                    <p className="font-mono text-xs text-amber-300">{item.parametricVaR}</p>
-                  </div>
-                  <div className="mt-2 p-3 bg-slate-950 rounded border border-slate-700">
-                    <p className="text-xs text-slate-300 mb-1">Historical VaR:</p>
-                    <p className="font-mono text-xs text-amber-300">{item.historicalVaR}</p>
-                  </div>
-                </>
-              )}
+      {/* Covariance Estimation */}
+      <div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Data Quality
+          </p>
+          <h3 className="text-xl font-bold text-slate-100 mt-1">
+            Robust Covariance Estimation
+          </h3>
+        </div>
+        <Card>
+          <div className="space-y-4">
+            <p className="text-slate-300">
+              High-dimensional covariance matrices are notoriously noisy. SaxtonPI applies:
+            </p>
+            <ul className="space-y-2 text-slate-400">
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Ledoit-Wolf shrinkage:</strong> Blends sample covariance with a structured target to reduce estimation error and guarantee positive-definiteness.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Condition number monitoring:</strong> Detects ill-conditioned matrices (κ {'>'} 1000) that would break optimization solvers.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Data validation:</strong> Caches price histories, handles missing data, and falls back gracefully when external vendors are slow.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </Card>
+      </div>
 
-              {item.components && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-300">Components:</p>
-                  <ul className="mt-2 space-y-1">
-                    {item.components.map((comp, i) => (
-                      <li key={i} className="text-xs text-slate-400">
-                        • <span className="font-mono text-amber-300">{comp}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+      {/* Optimization */}
+      <div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Portfolio Construction
+          </p>
+          <h3 className="text-xl font-bold text-slate-100 mt-1">
+            Optimization: Risk Parity, Min Variance, Black–Litterman
+          </h3>
+        </div>
+        <Card>
+          <div className="space-y-4">
+            <p className="text-slate-300">
+              SaxtonPI implements multiple classic portfolio optimization strategies:
+            </p>
+            <ul className="space-y-2 text-slate-400">
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Risk Parity:</strong> Equal risk contribution from each asset; highlights when risk is concentrated.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Minimum Variance:</strong> Minimizes portfolio volatility subject to constraints (long-only, fully invested, position caps).
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Black–Litterman:</strong> Blends equilibrium returns with your views to generate posterior allocations with built-in uncertainty estimates.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Maximum Sharpe:</strong> Tangency portfolio maximizing risk-adjusted returns; plotted on the efficient frontier.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </Card>
+      </div>
 
-              {item.properties && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-300">Properties:</p>
-                  <ul className="mt-2 space-y-1">
-                    {item.properties.map((prop, i) => (
-                      <li key={i} className="text-xs text-slate-400">
-                        • {prop}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+      {/* Factor Models */}
+      <div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Risk Attribution
+          </p>
+          <h3 className="text-xl font-bold text-slate-100 mt-1">
+            Factor Models & Regression Analysis
+          </h3>
+        </div>
+        <Card>
+          <div className="space-y-4">
+            <p className="text-slate-300">
+              SaxtonPI decomposes portfolio returns and risks into systematic (factor-driven) versus idiosyncratic (skill-based) components using Fama-French factors:
+            </p>
+            <ul className="space-y-2 text-slate-400">
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Fama-French 5-factor model:</strong> Market, Size, Value, Profitability, and Investment factors.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Factor betas & alpha:</strong> Shows how much of your return is explained by each factor and how much is unexplained (alpha).
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Variance decomposition:</strong> Reveals the fraction of risk driven by factors versus unique idiosyncratic positioning.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </Card>
+      </div>
 
-              {item.factors && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-300">Factors:</p>
-                  <ul className="mt-2 space-y-1">
-                    {item.factors.map((factor, i) => (
-                      <li key={i} className="text-xs text-slate-400">
-                        • {factor}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+      {/* Data Infrastructure */}
+      <div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Backend Infrastructure
+          </p>
+          <h3 className="text-xl font-bold text-slate-100 mt-1">
+            Data Handling & API Architecture
+          </h3>
+        </div>
+        <Card>
+          <div className="space-y-4">
+            <p className="text-slate-300">
+              The mathematical engine runs as a FastAPI-powered "Portfolio Quant API" called in real time by the frontend:
+            </p>
+            <ul className="space-y-2 text-slate-400">
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Data fetching:</strong> Pulls price histories from yfinance concurrently and caches them for subsequent requests.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Analytics pipelining:</strong> Orchestrates covariance, factor, risk, and optimization computations in a single request.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Error handling & fallbacks:</strong> Gracefully handles missing data, extreme correlations, and solver edge cases.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-amber-400 font-semibold flex-shrink-0">•</span>
+                <span>
+                  <strong className="text-slate-100">Rate limiting & performance:</strong> Protects expensive endpoints (optimization, backtesting) with sliding-window rate limits.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
 
-              {item.interpretation && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-300">Interpretation:</p>
-                  <ul className="mt-2 space-y-1">
-                    {item.interpretation.map((interp, i) => (
-                      <li key={i} className="text-xs text-slate-400">
-                        • {interp}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+  const renderCalculations = () => (
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Category Selection */}
+      <div className="space-y-3">
+        <p className="text-sm text-slate-400 font-medium">Select a calculation category:</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "optimization", label: "Optimization" },
+            { key: "covariance", label: "Covariance" },
+            { key: "factors", label: "Factor Models" },
+            { key: "blackLitterman", label: "Black–Litterman" },
+            { key: "riskMetrics", label: "Risk Metrics" },
+            { key: "annualization", label: "Annualization" },
+          ].map((cat) => (
+            <CategoryButton
+              key={cat.key}
+              isActive={activeCategory === cat.key}
+              onClick={() => setActiveCategory(cat.key)}
+            >
+              {cat.label}
+            </CategoryButton>
+          ))}
+        </div>
+      </div>
 
-              {item.useCases && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-300">Use Cases:</p>
-                  <ul className="mt-2 space-y-1">
-                    {item.useCases.map((useCase, i) => (
-                      <li key={i} className="text-xs text-slate-400">
-                        • {useCase}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {item.impact && (
-                <div className="mt-3 p-2 bg-slate-950/50 rounded">
-                  <p className="text-xs text-slate-300">
-                    <span className="font-semibold">Impact:</span> {item.impact}
-                  </p>
-                </div>
-              )}
-
-              {item.shrinkageTarget && (
-                <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                  <p className="text-xs text-slate-300 mb-1">Optimal Shrinkage (Ledoit & Wolf, 2004):</p>
-                  <p className="font-mono text-xs text-amber-300">{item.shrinkageTarget}</p>
-                </div>
-              )}
-
-              {item.analyticalSolution && (
-                <div className="mt-3 p-3 bg-slate-950 rounded border border-slate-700">
-                  <p className="text-xs text-slate-300 mb-1">Analytical Solution [unconstrained]:</p>
-                  <p className="font-mono text-xs text-amber-300">{item.analyticalSolution}</p>
-                </div>
-              )}
-
-              {item.example && (
-                <div className="mt-3 p-2 bg-slate-950/50 rounded border border-slate-700">
-                  <p className="text-xs text-slate-300">
-                    <span className="font-semibold">Example:</span> {item.example}
-                  </p>
-                </div>
-              )}
-
-              {item.implementation && (
-                <div className="mt-3">
-                  <p className="text-xs text-slate-400">
-                    <span className="font-semibold">Implementation:</span>{" "}
-                    <span className="font-mono text-blue-400">{item.implementation}</span>
-                  </p>
-                </div>
-              )}
-
-              {item.solver && (
-                <div className="mt-3">
-                  <p className="text-xs text-slate-400">
-                    <span className="font-semibold">Solver:</span> {item.solver}
-                  </p>
-                </div>
-              )}
-
-              {item.complexity && (
-                <div className="mt-1">
-                  <p className="text-xs text-slate-400">
-                    <span className="font-semibold">Complexity:</span> {item.complexity}
-                  </p>
-                </div>
-              )}
-            </div>
-          </Card>
+      {/* Formula Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {CALC_SECTIONS[activeCategory]?.map((item, idx) => (
+          <MathFormulaCard
+            key={idx}
+            title={item.title}
+            formula={item.formula}
+            description={item.description}
+            bullets={item.bullets}
+            implementation={item.implementation}
+            solver={item.solver}
+            complexity={item.complexity}
+          />
         ))}
       </div>
-    );
-  };
+    </div>
+  );
 
   return (
     <PageShell
       title="Mathematical Engine"
-      subtitle="Under the hood, SaxtonPI is powered by a portfolio analytics engine written in Python using NumPy and Pandas."
+      subtitle="Quantitative analytics powering SaxtonPI: covariance estimation, optimization, factor models, and risk metrics."
     >
-      <div className="page-layout" style={{ gap: "1.25rem" }}>
-        {/* Tabs Navigation */}
-        <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
-          <button
+      <div className="space-y-8">
+        {/* Main Tab Navigation */}
+        <div className="flex gap-3 px-6">
+          <TabButton
+            isActive={activeTab === "overview"}
             onClick={() => setActiveTab("overview")}
-            className={`px-3 py-2 text-sm font-medium transition ${
-              activeTab === "overview"
-                ? "text-amber-400 border-b-2 border-amber-400"
-                : "text-slate-400 hover:text-slate-300"
-            }`}
           >
             Overview
-          </button>
-          <button
+          </TabButton>
+          <TabButton
+            isActive={activeTab === "calculations"}
             onClick={() => setActiveTab("calculations")}
-            className={`px-3 py-2 text-sm font-medium transition ${
-              activeTab === "calculations"
-                ? "text-amber-400 border-b-2 border-amber-400"
-                : "text-slate-400 hover:text-slate-300"
-            }`}
           >
             Calculations
-          </button>
+          </TabButton>
         </div>
 
-        {/* Overview Tab */}
-        {activeTab === "overview" && (
-          <>
-            <Card className="bg-slate-900/60 border border-slate-800">
-              <div>
-                <p className="label-sm">Overview</p>
-                <h2 className="section-title">Mathematical Engine Overview</h2>
-                <p className="muted" style={{ marginTop: "12px" }}>
-                  Under the hood, SaxtonPI is powered by a portfolio analytics engine written in Python using NumPy and Pandas. For any set of assets and weights, the backend:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>Builds daily return series from price data and annualizes them.</li>
-                  <li>Estimates the full covariance and correlation matrices of returns.</li>
-                  <li>Derives portfolio-level risk statistics such as volatility, drawdowns, and diversification measures.</li>
-                </ul>
-                <p className="muted" style={{ marginTop: "12px" }}>
-                  These calculations are exposed through a FastAPI-powered "Portfolio Quant API" that the frontend calls in real time, so every chart and widget is backed by the same consistent math.
-                </p>
-              </div>
-            </Card>
-
-            <div>
-              <div className="section-header">
-                <div>
-                  <p className="label-sm">Core analytics</p>
-                  <h2 className="section-title">Portfolio Risk & Diversification Analytics</h2>
-                </div>
-              </div>
-              <Card>
-                <p className="muted">
-                  Given a matrix of historical returns, SaxtonPI:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>
-                    Constructs the annualized covariance matrix <span style={{ fontStyle: "italic" }}>Σ</span>.
-                  </li>
-                  <li>
-                    Computes portfolio variance as <span style={{ fontStyle: "italic" }}>w<sup>⊤</sup>Σw</span>, where{" "}
-                    <span style={{ fontStyle: "italic" }}>w</span> is the vector of portfolio weights.
-                  </li>
-                  <li>
-                    Derives portfolio volatility as <span style={{ fontStyle: "italic" }}>√(w<sup>⊤</sup>Σw)</span>.
-                  </li>
-                  <li>Exposes both the covariance and correlation matrices for inspection.</li>
-                </ul>
-                <p className="muted" style={{ marginTop: "16px" }}>
-                  To understand where risk actually comes from, the engine decomposes total variance into asset-level contributions using:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>
-                    <span className="font-semibold text-slate-100">Marginal contribution of asset i:</span> the i-th element of{" "}
-                    <span style={{ fontStyle: "italic" }}>Σw</span>.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-slate-100">Component contribution of asset i:</span>{" "}
-                    <span style={{ fontStyle: "italic" }}>w<sub>i</sub>(Σw)<sub>i</sub></span>.
-                  </li>
-                </ul>
-                <p className="muted" style={{ marginTop: "16px" }}>
-                  From these, SaxtonPI reports percentage contributions to risk, highlighting which positions dominate portfolio volatility. It also computes diversification metrics, such as a diversification ratio based on the relationship between individual asset volatilities and overall portfolio volatility.
-                </p>
-              </Card>
-            </div>
-
-            <div>
-              <div className="section-header">
-                <div>
-                  <p className="label-sm">Factor models</p>
-                  <h2 className="section-title">Factor Modeling & Regression</h2>
-                </div>
-              </div>
-              <Card>
-                <p className="muted">
-                  SaxtonPI includes a factor-model layer that maps raw tickers to predefined factor proxies (e.g., growth, value, or other styles) and computes factor return series from their price histories.
-                </p>
-                <p className="muted" style={{ marginTop: "12px" }}>
-                  For a given portfolio, the backend:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>Runs a time-series regression of portfolio returns on factor returns.</li>
-                  <li>
-                    Estimates factor loadings (betas), alpha (intercept), and goodness-of-fit statistics such as{" "}
-                    <span style={{ fontStyle: "italic" }}>R²</span>.
-                  </li>
-                  <li>
-                    Tracks residuals and residual volatility, making it clear how much risk is explained by the factor model versus idiosyncratic.
-                  </li>
-                </ul>
-                <p className="muted" style={{ marginTop: "16px" }}>
-                  The result is a factor exposure report that quantifies how sensitive the portfolio is to each underlying driver.
-                </p>
-              </Card>
-            </div>
-
-            <div>
-              <div className="section-header">
-                <div>
-                  <p className="label-sm">Optimization</p>
-                  <h2 className="section-title">Portfolio Optimization: Risk Parity, Minimum Variance, Black–Litterman</h2>
-                </div>
-              </div>
-              <Card>
-                <p className="muted">
-                  On top of the risk engine, SaxtonPI implements several classic portfolio construction techniques:
-                </p>
-                <div className="flex flex-col gap-4" style={{ marginTop: "16px" }}>
-                  <div>
-                    <p className="font-semibold text-slate-100">Risk Parity</p>
-                    <ul className="simple-list" style={{ marginTop: "8px" }}>
-                      <li>
-                        Searches for weights <span style={{ fontStyle: "italic" }}>w</span> such that each component{" "}
-                        <span style={{ fontStyle: "italic" }}>w<sub>i</sub>(Σw)<sub>i</sub></span> contributes roughly equally to total variance.
-                      </li>
-                      <li>Highlights when risk is concentrated in a few names versus spread across the book.</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-100">Minimum-Variance Portfolio</p>
-                    <ul className="simple-list" style={{ marginTop: "8px" }}>
-                      <li>
-                        Uses the estimated covariance matrix to minimize <span style={{ fontStyle: "italic" }}>w<sup>⊤</sup>Σw</span> subject to constraints (e.g., non-negativity, max position caps, fully invested).
-                      </li>
-                      <li>Produces tightly controlled, low-volatility portfolios.</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-100">Black–Litterman Allocation</p>
-                    <ul className="simple-list" style={{ marginTop: "8px" }}>
-                      <li>Combines implied equilibrium returns with user-specified views.</li>
-                      <li>
-                        Takes annualized mean returns and the covariance matrix, applies a Black–Litterman update, and outputs a posterior return vector and candidate allocation.
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-                <p className="muted" style={{ marginTop: "16px" }}>
-                  These optimizers run directly off historical returns and feed into an optimizer summary endpoint that returns the different allocations side by side.
-                </p>
-              </Card>
-            </div>
-
-            <div>
-              <div className="section-header">
-                <div>
-                  <p className="label-sm">Strategy research</p>
-                  <h2 className="section-title">Rule-Based Strategy & Backtesting Framework</h2>
-                </div>
-              </div>
-              <Card>
-                <p className="muted">
-                  SaxtonPI also includes a rule-based backtesting engine for tactical strategies. The backend:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>
-                    Computes technical indicators such as:
-                    <ul className="simple-list" style={{ marginTop: "8px", marginLeft: "16px" }}>
-                      <li>Moving averages / exponential moving averages</li>
-                      <li>Band-style indicators (e.g., Bollinger-style ranges)</li>
-                      <li>Rate of change</li>
-                      <li>Realized volatility</li>
-                    </ul>
-                  </li>
-                  <li style={{ marginTop: "8px" }}>
-                    Defines strategies via pluggable rule sets, e.g.:
-                    <ul className="simple-list" style={{ marginTop: "8px", marginLeft: "16px" }}>
-                      <li>"Go long when short-term MA crosses above long-term MA and realized volatility is below a threshold."</li>
-                    </ul>
-                  </li>
-                  <li style={{ marginTop: "8px" }}>
-                    Applies risk controls such as stop-loss and take-profit rules.
-                  </li>
-                  <li>
-                    Simulates position changes through time, producing an equity curve and performance summary (returns, volatility, drawdowns).
-                  </li>
-                </ul>
-              </Card>
-            </div>
-
-            <div>
-              <div className="section-header">
-                <div>
-                  <p className="label-sm">Data infrastructure</p>
-                  <h2 className="section-title">Data Handling, Resampling & Return Construction</h2>
-                </div>
-              </div>
-              <Card>
-                <p className="muted">
-                  All analytics start from clean, consistent return streams. SaxtonPI:
-                </p>
-                <ul className="simple-list" style={{ marginTop: "12px" }}>
-                  <li>Pulls historical price data and converts it into daily returns.</li>
-                  <li>
-                    Resamples to other horizons (weekly, monthly, etc.) using compound returns{" "}
-                    <span style={{ fontStyle: "italic" }}>(1+r₁)(1+r₂)⋯(1+rₙ)−1</span>.
-                  </li>
-                  <li>
-                    Annualizes volatility and covariance using standard market conventions (e.g. scaling by{" "}
-                    <span style={{ fontStyle: "italic" }}>√252</span> for daily data).
-                  </li>
-                  <li>
-                    Includes caching and fallback logic for price histories and factor series so analytics remain robust even when external data vendors are slow or temporarily unavailable.
-                  </li>
-                </ul>
-              </Card>
-            </div>
-          </>
-        )}
-
-        {/* Calculations Tab */}
-        {activeTab === "calculations" && (
-          <>
-            {/* Calculation Subtabs */}
-            <div className="flex flex-wrap gap-2 bg-slate-950 rounded p-2 border border-slate-800">
-              {[
-                { key: "optimization", label: "Optimization" },
-                { key: "covariance", label: "Covariance" },
-                { key: "factorModels", label: "Factor Models" },
-                { key: "blackLitterman", label: "Black-Litterman" },
-                { key: "riskMetrics", label: "Risk Metrics" },
-                { key: "annualization", label: "Annualization" }
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(`calculations-${tab.key}`)}
-                  className={`px-2 py-1 text-xs font-medium rounded transition ${
-                    activeTab === `calculations-${tab.key}`
-                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                      : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Render selected calculation subtab */}
-            {activeTab.startsWith("calculations-") && (
-              <>
-                {(() => {
-                  const subTab = activeTab.replace("calculations-", "");
-                  if (subTab === "optimization")
-                    return renderCalculations();
-                  if (subTab === "covariance") {
-                    setActiveTab("covariance");
-                    return renderCalculations();
-                  }
-                  if (subTab === "factorModels") {
-                    setActiveTab("factorModels");
-                    return renderCalculations();
-                  }
-                  if (subTab === "blackLitterman") {
-                    setActiveTab("blackLitterman");
-                    return renderCalculations();
-                  }
-                  if (subTab === "riskMetrics") {
-                    setActiveTab("riskMetrics");
-                    return renderCalculations();
-                  }
-                  if (subTab === "annualization") {
-                    setActiveTab("annualization");
-                    return renderCalculations();
-                  }
-                })()}
-              </>
-            )}
-
-            {/* Default show optimization if calculations tab selected but no subtab */}
-            {activeTab === "calculations" && (
-              <>
-                <p className="text-slate-400 text-center py-8">Select a calculation category above to view formulas</p>
-              </>
-            )}
-          </>
-        )}
+        {/* Tab Content */}
+        {activeTab === "overview" && renderOverview()}
+        {activeTab === "calculations" && renderCalculations()}
       </div>
     </PageShell>
   );

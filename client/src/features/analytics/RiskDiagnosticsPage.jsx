@@ -163,20 +163,6 @@ const RiskDiagnosticsPage = ({ analysisPayload }) => {
     []
   );
 
-  const commentary = useMemo(() => {
-    if (!summary) return "Run a Historical Analysis to generate commentary.";
-    if (summary.sharpe >= 1.5 && summary.maxDrawdown > -0.2) {
-      return "Strong risk-adjusted performance with contained drawdowns.";
-    }
-    if (summary.sharpe >= 1 && summary.maxDrawdown > -0.3) {
-      return "Solid profile with balanced returns and manageable drawdowns.";
-    }
-    if (summary.totalReturn > 0 && (summary.sharpe < 1 || summary.maxDrawdown <= -0.3)) {
-      return "Returns come with significant risk; consider reducing volatility or drawdowns.";
-    }
-    return "Risk-adjusted returns are weak; review position sizing and risk controls.";
-  }, [summary]);
-
   const summaryCards = [
     { label: "Total Return", value: formatPercent(summary?.total_return ?? summary?.totalReturn) },
     { label: "Annualized Return", value: formatPercent(summary?.cagr ?? summary?.annualizedReturn) },
@@ -415,27 +401,6 @@ const RiskDiagnosticsPage = ({ analysisPayload }) => {
           </div>
         )}
       </Card>
-
-      <div className="card">
-        <div className="section-heading">
-          <h3>Strategy Commentary</h3>
-          <p className="muted">Quick interpretation based on your risk/return profile.</p>
-        </div>
-        {loading ? (
-          <p className="muted">Evaluating performance...</p>
-        ) : (
-          <div className="commentary">
-            <p>{commentary}</p>
-            {summary && (
-              <ul className="muted" style={{ marginTop: "0.5rem" }}>
-                <li>Sharpe: {formatRatio(summary.sharpe_ratio ?? summary.sharpe)}</li>
-                <li>Volatility: {formatPercent(summary.annualized_volatility ?? summary.volatility)}</li>
-                <li>Max drawdown: {formatPercent(summary.max_drawdown ?? summary.maxDrawdown)}</li>
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
 
       <SectionHeader
         overline="Diagnostics"
