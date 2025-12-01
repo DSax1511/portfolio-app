@@ -1,34 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Area, ReferenceLine
+} from 'recharts';
 import './AdvancedBacktestPage.css';
 
 const AdvancedBacktestPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeStrategy, setActiveStrategy] = useState('pairs');
+  const [activeTab, setActiveTab] = useState('walkforward');
   const [backtest, setBacktest] = useState(null);
-  
+
   const [params, setParams] = useState({
-    pairs: {
-      ticker1: 'AAPL',
-      ticker2: 'MSFT',
-      lookback: 60,
-      entry_z: 2.0,
-      exit_z: 0.5,
-    },
-    garch: {
-      target_vol: 0.15,
-      lookback: 252,
-    },
     walkforward: {
-      lookback_months: 12,
-      reopt_months: 3,
-      method: 'sharpe',
+      tickers: ['SPY', 'AGG', 'GLD'],
+      start_date: '2022-01-01',
+      end_date: '2024-12-31',
+      train_window: 252,
+      test_window: 63,
+      monte_carlo_sims: 1000,
     },
-    momentum: {
-      lookback: 126,
-      holding_period: 21,
-      top_n: 3,
+    pairs: {
+      asset1: 'AAPL',
+      asset2: 'MSFT',
+      start_date: '2022-01-01',
+      end_date: '2024-12-31',
+      lookback: 60,
+      entry_zscore: 2.0,
+      exit_zscore: 0.5,
+      stop_loss_zscore: 3.0,
+    },
+    factors: {
+      tickers: ['AAPL', 'JPM', 'XOM', 'PG'],
+      weights: [0.25, 0.25, 0.25, 0.25],
+      start_date: '2022-01-01',
+      end_date: '2024-12-31',
     },
   });
 
@@ -36,25 +43,30 @@ const AdvancedBacktestPage = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const endpoint = {
-        pairs: '/api/backtest/pairs-trading',
-        garch: '/api/backtest/garch-vol-targeting',
-        walkforward: '/api/backtest/walk-forward',
-        momentum: '/api/backtest/momentum',
-      }[activeStrategy];
 
-      const response = await fetch(endpoint, {
+      const endpoints = {
+        walkforward: '/api/backtests/walk-forward',
+        pairs: '/api/strategies/pairs-trading',
+        factors: '/api/analytics/factor-attribution-v2',
+      };
+
+      const payload = params[activeTab];
+      const response = await fetch(endpoints[activeTab], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params[activeStrategy]),
+        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || `HTTP ${response.status}`);
+      }
+
       const data = await response.json();
       setBacktest(data);
     } catch (err) {
-      setError(err.message || 'Backtest failed');
+      setError(err.message || 'Analysis failed');
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -63,352 +75,459 @@ const AdvancedBacktestPage = () => {
   const handleParamChange = (field, value) => {
     setParams({
       ...params,
-      [activeStrategy]: {
-        ...params[activeStrategy],
-        [field]: isNaN(value) ? value : parseFloat(value),
+      [activeTab]: {
+        ...params[activeTab],
+        [field]: isNaN(value) ? value : isNaN(parseFloat(value)) ? value : parseFloat(value),
       },
     });
   };
 
-  // Transform data for charts
-  const equityData = backtest?.timeseries
-    ? backtest.timeseries.dates.map((date, idx) => ({
-        date: new Date(date).toLocaleDateString(),
-        equity: (backtest.timeseries.cumulative_returns?.[idx] || 1) * 100,
-        benchmark: (backtest.timeseries.benchmark?.[idx] || 1) * 100,
-      }))
-    : [];
+  // Process walk-forward data
+  const wfEquityData = useMemo(() => {
+    if (!backtest?.walk_forward?.testing_performance) return [];
+    return backtest.walk_forward.testing_performance.map((item, idx) => ({
+      period: item.period?.substring(0, 7) || `Period ${idx}`,
+      return: (item.return * 100).toFixed(2),
+      sharpe: item.sharpe?.toFixed(2),
+      vol: (item.vol * 100).toFixed(2),
+    }));
+  }, [backtest]);
 
-  const strategyMetrics = backtest?.summary ? [
-    { metric: 'Total Return', value: `${(backtest.summary.total_return * 100).toFixed(2)}%` },
-    { metric: 'Sharpe Ratio', value: backtest.summary.sharpe_ratio?.toFixed(2) || 'N/A' },
-    { metric: 'Max Drawdown', value: `${(backtest.summary.max_drawdown * 100).toFixed(2)}%` },
-    { metric: 'Volatility', value: `${(backtest.summary.volatility * 100).toFixed(2)}%` },
-  ] : [];
+  const wfMetrics = useMemo(() => {
+    if (!backtest?.walk_forward) return {};
+    const wf = backtest.walk_forward;
+    return {
+      oosReturn: (wf.out_of_sample_annual_return * 100).toFixed(2),
+      oosSharpe: wf.out_of_sample_sharpe?.toFixed(2),
+      oosVol: (wf.out_of_sample_volatility * 100).toFixed(2),
+      maxDD: (wf.max_drawdown_oos * 100).toFixed(2),
+      degradation: (wf.performance_degradation * 100).toFixed(1),
+      overfitting: wf.overfitting_indicator,
+    };
+  }, [backtest]);
+
+  const pairsMetrics = useMemo(() => {
+    if (!backtest?.backtest) return {};
+    const bt = backtest.backtest;
+    return {
+      annReturn: (bt.annual_return * 100)?.toFixed(2),
+      sharpe: bt.sharpe_ratio?.toFixed(2),
+      maxDD: (bt.max_drawdown * 100)?.toFixed(2),
+      winRate: (bt.win_rate * 100)?.toFixed(1),
+      numTrades: bt.num_trades,
+    };
+  }, [backtest]);
+
+  const factorMetrics = useMemo(() => {
+    if (!backtest?.attribution) return {};
+    const attr = backtest.attribution;
+    return {
+      alpha: attr.alpha_annual_bps?.toFixed(0),
+      alphaSig: attr.alpha_significant ? '✓' : '✗',
+      marketBeta: attr.factor_betas?.market?.toFixed(2),
+      systematic: backtest.risk_decomposition?.systematic_pct?.toFixed(1),
+    };
+  }, [backtest]);
+
+  const drawdownData = useMemo(() => {
+    if (!backtest?.drawdown_analysis?.underwater_chart) return [];
+    return backtest.drawdown_analysis.underwater_chart.slice(-252).map((dd, idx) => ({
+      day: idx,
+      drawdown: (dd * 100).toFixed(2),
+    }));
+  }, [backtest]);
+
+  const mcSimulations = useMemo(() => {
+    if (!backtest?.monte_carlo_robustness?.sharpe_percentiles) return {};
+    const mc = backtest.monte_carlo_robustness;
+    return {
+      meanReturn: (mc.mean_return * 100).toFixed(2),
+      stdReturn: (mc.std_return * 100).toFixed(2),
+      probPos: (mc.probability_positive * 100).toFixed(1),
+      p5: mc.sharpe_percentiles?.['5th']?.toFixed(2),
+      p50: mc.sharpe_percentiles?.['50th']?.toFixed(2),
+      p95: mc.sharpe_percentiles?.['95th']?.toFixed(2),
+    };
+  }, [backtest]);
 
   return (
-    <div className="advanced-backtest">
-      <div className="page-header">
-        <h1>🚀 Advanced Backtesting</h1>
-        <p>Production-grade quant strategies with transaction cost modeling</p>
+    <div className="advanced-backtest-v2">
+      {/* Hero Section */}
+      <div className="hero-section">
+        <div className="hero-content">
+          <h1>Advanced Backtesting Suite</h1>
+          <p>Institutional-grade strategy analysis with walk-forward validation, pairs trading, and factor attribution</p>
+          <div className="hero-badges">
+            <span className="badge">📊 Walk-Forward</span>
+            <span className="badge">🔗 Pairs Trading</span>
+            <span className="badge">📈 Factor Analysis</span>
+          </div>
+        </div>
       </div>
 
-      {/* Strategy Selector */}
-      <div className="strategy-selector">
-        <button 
-          className={`strategy-btn ${activeStrategy === 'pairs' ? 'active' : ''}`}
-          onClick={() => { setActiveStrategy('pairs'); setBacktest(null); }}
-        >
-          Pairs Trading
-        </button>
-        <button 
-          className={`strategy-btn ${activeStrategy === 'garch' ? 'active' : ''}`}
-          onClick={() => { setActiveStrategy('garch'); setBacktest(null); }}
-        >
-          GARCH Vol Target
-        </button>
-        <button 
-          className={`strategy-btn ${activeStrategy === 'walkforward' ? 'active' : ''}`}
-          onClick={() => { setActiveStrategy('walkforward'); setBacktest(null); }}
-        >
-          Walk-Forward Opt
-        </button>
-        <button 
-          className={`strategy-btn ${activeStrategy === 'momentum' ? 'active' : ''}`}
-          onClick={() => { setActiveStrategy('momentum'); setBacktest(null); }}
-        >
-          Momentum Strategy
-        </button>
+      {/* Tab Navigation */}
+      <div className="tabs-container">
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === 'walkforward' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('walkforward'); setBacktest(null); }}
+          >
+            <span className="tab-icon">📊</span>
+            <div className="tab-text">
+              <div className="tab-label">Walk-Forward Validation</div>
+              <div className="tab-hint">Out-of-sample testing</div>
+            </div>
+          </button>
+          <button
+            className={`tab ${activeTab === 'pairs' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('pairs'); setBacktest(null); }}
+          >
+            <span className="tab-icon">🔗</span>
+            <div className="tab-text">
+              <div className="tab-label">Pairs Trading</div>
+              <div className="tab-hint">Cointegration arbitrage</div>
+            </div>
+          </button>
+          <button
+            className={`tab ${activeTab === 'factors' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('factors'); setBacktest(null); }}
+          >
+            <span className="tab-icon">📈</span>
+            <div className="tab-text">
+              <div className="tab-label">Factor Attribution</div>
+              <div className="tab-hint">Fama-French 5-factor</div>
+            </div>
+          </button>
+        </div>
       </div>
 
-      {/* Control Panel */}
-      <div className="control-panel">
-        {activeStrategy === 'pairs' && (
-          <>
-            <div className="control-group">
-              <label>Ticker 1</label>
-              <input 
-                type="text"
-                value={params.pairs.ticker1}
-                onChange={(e) => handleParamChange('ticker1', e.target.value)}
-                placeholder="e.g., AAPL"
-              />
-            </div>
-            <div className="control-group">
-              <label>Ticker 2</label>
-              <input 
-                type="text"
-                value={params.pairs.ticker2}
-                onChange={(e) => handleParamChange('ticker2', e.target.value)}
-                placeholder="e.g., MSFT"
-              />
-            </div>
-            <div className="control-group">
-              <label>Lookback (days): {params.pairs.lookback}</label>
-              <input 
-                type="range"
-                min="30"
-                max="120"
-                value={params.pairs.lookback}
-                onChange={(e) => handleParamChange('lookback', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Entry Z-Score: {params.pairs.entry_z.toFixed(1)}</label>
-              <input 
-                type="range"
-                min="1"
-                max="4"
-                step="0.1"
-                value={params.pairs.entry_z}
-                onChange={(e) => handleParamChange('entry_z', e.target.value)}
-              />
-            </div>
-          </>
-        )}
+      {/* Main Content */}
+      <div className="backtest-container">
+        {/* Left Panel: Parameters */}
+        <div className="params-panel">
+          <div className="params-card">
+            <h3>Strategy Parameters</h3>
 
-        {activeStrategy === 'garch' && (
-          <>
-            <div className="control-group">
-              <label>Target Volatility: {(params.garch.target_vol * 100).toFixed(1)}%</label>
-              <input 
-                type="range"
-                min="0.05"
-                max="0.30"
-                step="0.01"
-                value={params.garch.target_vol}
-                onChange={(e) => handleParamChange('target_vol', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Lookback (days): {params.garch.lookback}</label>
-              <input 
-                type="range"
-                min="100"
-                max="500"
-                step="50"
-                value={params.garch.lookback}
-                onChange={(e) => handleParamChange('lookback', e.target.value)}
-              />
-            </div>
-          </>
-        )}
-
-        {activeStrategy === 'walkforward' && (
-          <>
-            <div className="control-group">
-              <label>Lookback (months): {params.walkforward.lookback_months}</label>
-              <input 
-                type="range"
-                min="6"
-                max="36"
-                step="3"
-                value={params.walkforward.lookback_months}
-                onChange={(e) => handleParamChange('lookback_months', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Reoptimization (months): {params.walkforward.reopt_months}</label>
-              <input 
-                type="range"
-                min="1"
-                max="12"
-                step="1"
-                value={params.walkforward.reopt_months}
-                onChange={(e) => handleParamChange('reopt_months', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Method</label>
-              <select 
-                value={params.walkforward.method}
-                onChange={(e) => handleParamChange('method', e.target.value)}
-              >
-                <option value="sharpe">Max Sharpe</option>
-                <option value="min_vol">Min Volatility</option>
-                <option value="equal">Equal Weight</option>
-              </select>
-            </div>
-          </>
-        )}
-
-        {activeStrategy === 'momentum' && (
-          <>
-            <div className="control-group">
-              <label>Lookback (days): {params.momentum.lookback}</label>
-              <input 
-                type="range"
-                min="63"
-                max="252"
-                step="21"
-                value={params.momentum.lookback}
-                onChange={(e) => handleParamChange('lookback', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Holding (days): {params.momentum.holding_period}</label>
-              <input 
-                type="range"
-                min="5"
-                max="63"
-                step="5"
-                value={params.momentum.holding_period}
-                onChange={(e) => handleParamChange('holding_period', e.target.value)}
-              />
-            </div>
-            <div className="control-group">
-              <label>Top N: {params.momentum.top_n}</label>
-              <input 
-                type="range"
-                min="1"
-                max="10"
-                step="1"
-                value={params.momentum.top_n}
-                onChange={(e) => handleParamChange('top_n', e.target.value)}
-              />
-            </div>
-          </>
-        )}
-
-        <button 
-          className="btn-primary"
-          onClick={runBacktest}
-          disabled={loading}
-        >
-          {loading ? 'Running...' : 'Run Backtest'}
-        </button>
-      </div>
-
-      {error && <div className="error-message">{error}</div>}
-
-      {/* Results */}
-      {backtest && (
-        <div className="results">
-          {/* Equity Curve */}
-          <div className="card">
-            <h3>Strategy Performance</h3>
-            {equityData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={equityData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="date" 
-                    tick={{ fontSize: 12 }}
+            {activeTab === 'walkforward' && (
+              <>
+                <div className="param-group">
+                  <label>Tickers</label>
+                  <input
+                    type="text"
+                    value={params.walkforward.tickers.join(', ')}
+                    onChange={(e) => handleParamChange('tickers', e.target.value.split(',').map(t => t.trim()))}
+                    placeholder="SPY, AGG, GLD"
                   />
-                  <YAxis />
-                  <Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
-                  <Legend />
-                  <Line 
-                    type="monotone"
-                    dataKey="equity"
-                    stroke="#667eea"
-                    name="Strategy"
-                    isAnimationActive={false}
-                    dot={false}
+                </div>
+                <div className="param-group">
+                  <label>Training Window (days)</label>
+                  <input
+                    type="number"
+                    value={params.walkforward.train_window}
+                    onChange={(e) => handleParamChange('train_window', e.target.value)}
+                    min="100"
+                    max="1000"
                   />
-                  {backtest.timeseries.benchmark && (
-                    <Line 
-                      type="monotone"
-                      dataKey="benchmark"
-                      stroke="#999"
-                      name="Benchmark"
-                      isAnimationActive={false}
-                      dot={false}
-                    />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="no-data">No data available</p>
+                  <span className="hint">Typically 1 year (252 days)</span>
+                </div>
+                <div className="param-group">
+                  <label>Testing Window (days)</label>
+                  <input
+                    type="number"
+                    value={params.walkforward.test_window}
+                    onChange={(e) => handleParamChange('test_window', e.target.value)}
+                    min="20"
+                    max="252"
+                  />
+                  <span className="hint">Typically 1 quarter (63 days)</span>
+                </div>
+                <div className="param-group">
+                  <label>Monte Carlo Simulations</label>
+                  <input
+                    type="number"
+                    value={params.walkforward.monte_carlo_sims}
+                    onChange={(e) => handleParamChange('monte_carlo_sims', e.target.value)}
+                    min="100"
+                    max="5000"
+                    step="100"
+                  />
+                </div>
+              </>
+            )}
+
+            {activeTab === 'pairs' && (
+              <>
+                <div className="param-group">
+                  <label>Asset 1</label>
+                  <input
+                    type="text"
+                    value={params.pairs.asset1}
+                    onChange={(e) => handleParamChange('asset1', e.target.value.toUpperCase())}
+                    placeholder="AAPL"
+                  />
+                </div>
+                <div className="param-group">
+                  <label>Asset 2</label>
+                  <input
+                    type="text"
+                    value={params.pairs.asset2}
+                    onChange={(e) => handleParamChange('asset2', e.target.value.toUpperCase())}
+                    placeholder="MSFT"
+                  />
+                </div>
+                <div className="param-group">
+                  <label>Entry Z-Score</label>
+                  <input
+                    type="number"
+                    value={params.pairs.entry_zscore}
+                    onChange={(e) => handleParamChange('entry_zscore', e.target.value)}
+                    step="0.1"
+                    min="1"
+                    max="4"
+                  />
+                  <span className="hint">Entry at deviation from mean</span>
+                </div>
+                <div className="param-group">
+                  <label>Exit Z-Score</label>
+                  <input
+                    type="number"
+                    value={params.pairs.exit_zscore}
+                    onChange={(e) => handleParamChange('exit_zscore', e.target.value)}
+                    step="0.1"
+                    min="0.1"
+                    max="2"
+                  />
+                  <span className="hint">Exit when reverting to mean</span>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'factors' && (
+              <>
+                <div className="param-group">
+                  <label>Tickers</label>
+                  <input
+                    type="text"
+                    value={params.factors.tickers.join(', ')}
+                    onChange={(e) => handleParamChange('tickers', e.target.value.split(',').map(t => t.trim()))}
+                    placeholder="AAPL, JPM, XOM, PG"
+                  />
+                </div>
+                <div className="param-group">
+                  <label>Weights</label>
+                  <div className="weight-display">
+                    {params.factors.weights.map((w, i) => (
+                      <span key={i} className="weight-badge">{(w * 100).toFixed(0)}%</span>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <button
+              className="run-btn"
+              onClick={runBacktest}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner"></span> Analyzing...
+                </>
+              ) : (
+                <>▶ Run Analysis</>
+              )}
+            </button>
+
+            {error && (
+              <div className="error-box">
+                <span className="error-icon">⚠️</span>
+                {error}
+              </div>
             )}
           </div>
+        </div>
 
-          {/* Metrics Grid */}
-          <div className="metrics-grid">
-            {strategyMetrics.map((m) => (
-              <div key={m.metric} className="metric-card">
-                <span className="metric-label">{m.metric}</span>
-                <span className="metric-value">{m.value}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Strategy-Specific Details */}
-          {activeStrategy === 'pairs' && backtest.summary && (
-            <div className="card">
-              <h3>Pairs Trading Details</h3>
-              <ul className="details-list">
-                <li>
-                  <strong>Cointegration P-Value:</strong>
-                  <span>{backtest.summary.cointegration_pvalue?.toFixed(6) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>Is Cointegrated:</strong>
-                  <span>{backtest.summary.is_cointegrated ? '✓ Yes' : '✗ No'}</span>
-                </li>
-                <li>
-                  <strong>Hedge Ratio:</strong>
-                  <span>{backtest.summary.hedge_ratio?.toFixed(3) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>Number of Trades:</strong>
-                  <span>{backtest.summary.num_trades || 0}</span>
-                </li>
-              </ul>
+        {/* Right Panel: Results */}
+        <div className="results-panel">
+          {!backtest ? (
+            <div className="empty-state">
+              <div className="empty-icon">📊</div>
+              <h3>Configure and Run Analysis</h3>
+              <p>Adjust parameters on the left and click "Run Analysis" to see results</p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Walk-Forward Results */}
+              {activeTab === 'walkforward' && backtest.walk_forward && (
+                <div className="results-content">
+                  {/* Key Metrics Grid */}
+                  <div className="metrics-grid">
+                    <div className="metric-card primary">
+                      <div className="metric-label">Out-of-Sample Sharpe</div>
+                      <div className="metric-value">{wfMetrics.oosSharpe}</div>
+                      <div className="metric-insight">{wfMetrics.oosReturn}% annual return</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Volatility</div>
+                      <div className="metric-value">{wfMetrics.oosVol}%</div>
+                      <div className="metric-insight">Annualized</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Max Drawdown</div>
+                      <div className="metric-value red">{wfMetrics.maxDD}%</div>
+                      <div className="metric-insight">OOS period</div>
+                    </div>
+                    <div className={`metric-card ${wfMetrics.overfitting === 'low' ? 'success' : wfMetrics.overfitting === 'medium' ? 'warning' : 'danger'}`}>
+                      <div className="metric-label">Overfitting</div>
+                      <div className="metric-value">{wfMetrics.overfitting}</div>
+                      <div className="metric-insight">Degradation: {wfMetrics.degradation}%</div>
+                    </div>
+                  </div>
 
-          {activeStrategy === 'garch' && backtest.garch_params && (
-            <div className="card">
-              <h3>GARCH(1,1) Parameters</h3>
-              <ul className="details-list">
-                <li>
-                  <strong>ω (omega):</strong>
-                  <span>{backtest.garch_params.omega?.toFixed(8) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>α (alpha):</strong>
-                  <span>{backtest.garch_params.alpha?.toFixed(6) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>β (beta):</strong>
-                  <span>{backtest.garch_params.beta?.toFixed(6) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>Average Leverage:</strong>
-                  <span>{backtest.summary.avg_leverage?.toFixed(2) || 'N/A'}x</span>
-                </li>
-              </ul>
-            </div>
-          )}
+                  {/* Testing vs Training Performance */}
+                  <div className="chart-section">
+                    <h4>Performance by Period</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={wfEquityData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="period" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="return" fill="#6366f1" name="Return %" />
+                        <Bar dataKey="sharpe" fill="#10b981" name="Sharpe Ratio" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
 
-          {activeStrategy === 'walkforward' && backtest.summary && (
-            <div className="card">
-              <h3>Walk-Forward Summary</h3>
-              <ul className="details-list">
-                <li>
-                  <strong>In-Sample Sharpe:</strong>
-                  <span>{backtest.summary.in_sample_sharpe?.toFixed(2) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>Out-of-Sample Sharpe:</strong>
-                  <span>{backtest.summary.sharpe_ratio?.toFixed(2) || 'N/A'}</span>
-                </li>
-                <li>
-                  <strong>Number of Rebalances:</strong>
-                  <span>{backtest.summary.num_rebalances || 0}</span>
-                </li>
-              </ul>
-            </div>
+                  {/* Drawdown Analysis */}
+                  {backtest.drawdown_analysis && (
+                    <div className="chart-section">
+                      <h4>Underwater Plot (Max Drawdown: {backtest.drawdown_analysis.max_drawdown?.toFixed(2)}%)</h4>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <AreaChart data={drawdownData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="day" />
+                          <YAxis />
+                          <Tooltip />
+                          <Area type="monotone" dataKey="drawdown" fill="#ef4444" stroke="#dc2626" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Monte Carlo Results */}
+                  {backtest.monte_carlo_robustness && (
+                    <div className="metrics-grid">
+                      <div className="metric-card">
+                        <div className="metric-label">MC Mean Return</div>
+                        <div className="metric-value">{mcSimulations.meanReturn}%</div>
+                      </div>
+                      <div className="metric-card">
+                        <div className="metric-label">MC Std Dev</div>
+                        <div className="metric-value">{mcSimulations.stdReturn}%</div>
+                      </div>
+                      <div className="metric-card success">
+                        <div className="metric-label">Prob. Positive</div>
+                        <div className="metric-value">{mcSimulations.probPos}%</div>
+                      </div>
+                      <div className="metric-card">
+                        <div className="metric-label">Sharpe 50th %ile</div>
+                        <div className="metric-value">{mcSimulations.p50}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Pairs Trading Results */}
+              {activeTab === 'pairs' && backtest.backtest && (
+                <div className="results-content">
+                  <div className="metrics-grid">
+                    <div className="metric-card primary">
+                      <div className="metric-label">Annual Return</div>
+                      <div className="metric-value">{pairsMetrics.annReturn}%</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Sharpe Ratio</div>
+                      <div className="metric-value">{pairsMetrics.sharpe}</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Max Drawdown</div>
+                      <div className="metric-value red">{pairsMetrics.maxDD}%</div>
+                    </div>
+                    <div className="metric-card success">
+                      <div className="metric-label">Win Rate</div>
+                      <div className="metric-value">{pairsMetrics.winRate}%</div>
+                      <div className="metric-insight">{pairsMetrics.numTrades} trades</div>
+                    </div>
+                  </div>
+
+                  {backtest.cointegration?.pairs && (
+                    <div className="info-box">
+                      <h4>Cointegration Test Results</h4>
+                      <div className="cointegration-result">
+                        <div>✓ Cointegrated</div>
+                        <div>Spread Z-Score: {backtest.cointegration.pairs[0]?.spread_zscore?.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Factor Attribution Results */}
+              {activeTab === 'factors' && backtest.attribution && (
+                <div className="results-content">
+                  <div className="metrics-grid">
+                    <div className="metric-card primary">
+                      <div className="metric-label">Alpha (Annual)</div>
+                      <div className="metric-value">{factorMetrics.alpha} bps</div>
+                      <div className={`metric-insight ${factorMetrics.alphaSig === '✓' ? 'success' : 'warning'}`}>
+                        Significant: {factorMetrics.alphaSig}
+                      </div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Market Beta</div>
+                      <div className="metric-value">{factorMetrics.marketBeta}</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">Systematic Risk</div>
+                      <div className="metric-value">{factorMetrics.systematic}%</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-label">R-Squared</div>
+                      <div className="metric-value">{(backtest.attribution.r_squared * 100)?.toFixed(1)}%</div>
+                    </div>
+                  </div>
+
+                  {backtest.attribution?.factor_betas && (
+                    <div className="factor-loadings">
+                      <h4>Factor Loadings</h4>
+                      <div className="factor-grid">
+                        {Object.entries(backtest.attribution.factor_betas).map(([factor, beta]) => (
+                          <div key={factor} className="factor-item">
+                            <span className="factor-name">{factor}</span>
+                            <span className={`factor-value ${beta > 0 ? 'positive' : beta < 0 ? 'negative' : ''}`}>
+                              {beta?.toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
-      )}
+      </div>
 
-      {!backtest && !loading && (
-        <div className="empty-state">
-          <p>Select strategy parameters and click "Run Backtest"</p>
-        </div>
-      )}
+      {/* Footer Info */}
+      <div className="footer-info">
+        <p>💡 Walk-Forward validation separates training and testing periods to prevent lookahead bias</p>
+        <p>🔗 Pairs trading identifies stationary combinations for mean-reversion arbitrage</p>
+        <p>📈 Factor attribution decomposes returns across systematic risk drivers</p>
+      </div>
     </div>
   );
 };
