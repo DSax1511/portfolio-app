@@ -1,34 +1,39 @@
 .portfolio-lab {
   padding: 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--bg-page);
   min-height: 100vh;
 }
 
 .page-header {
   text-align: center;
-  color: white;
+  color: var(--text-primary);
   margin-bottom: 2rem;
 }
 
 .page-header h1 {
   font-size: 2.5rem;
   margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .page-header p {
   font-size: 1.1rem;
-  opacity: 0.9;
+  color: var(--text-secondary);
 }
 
 .control-panel {
-  background: white;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   padding: 2rem;
   margin-bottom: 2rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.5rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .control-group {
@@ -39,7 +44,7 @@
 
 .control-group label {
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
   font-size: 0.95rem;
 }
 
@@ -47,10 +52,12 @@
 .control-group input[type="number"],
 .control-group select {
   padding: 0.75rem;
-  border: 2px solid #e0e0e0;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-page);
   border-radius: 6px;
   font-size: 0.95rem;
   transition: border-color 0.3s;
+  color: var(--text-primary);
 }
 
 .control-group input[type="text"]:focus,
@@ -74,7 +81,7 @@
 
 .control-group .tooltip {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--text-secondary);
   font-style: italic;
 }
 
@@ -101,30 +108,32 @@
 }
 
 .error-message {
-  background: #ff6b6b;
-  color: white;
+  background: rgba(246, 70, 93, 0.1);
+  color: var(--accent-red);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;
   font-weight: 500;
+  border: 1px solid rgba(246, 70, 93, 0.3);
 }
 
 .tabs {
   display: flex;
   gap: 0;
-  background: white;
+  background: var(--bg-surface);
   border-radius: 12px 12px 0 0;
   overflow: hidden;
   margin-bottom: 0;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .tab {
   flex: 1;
   padding: 1rem;
   border: none;
-  background: #f5f5f5;
-  color: #666;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.3s;
@@ -132,20 +141,23 @@
 }
 
 .tab:hover {
-  background: #efefef;
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
 }
 
 .tab.active {
-  background: white;
+  background: var(--bg-surface-elevated);
   color: #667eea;
   border-bottom-color: #667eea;
 }
 
 .content {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 0 0 12px 12px;
   padding: 2rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-subtle);
+  border-top: none;
 }
 
 .tab-content {
@@ -164,17 +176,17 @@
 }
 
 .card {
-  background: #f9fafb;
+  background: var(--bg-surface-elevated);
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-subtle);
 }
 
 .card h3 {
   margin-top: 0;
   margin-bottom: 1.5rem;
-  color: #333;
+  color: var(--text-primary);
   font-size: 1.2rem;
 }
 
@@ -194,7 +206,7 @@
 .metric {
   display: flex;
   flex-direction: column;
-  background: white;
+  background: var(--bg-surface-elevated);
   padding: 1rem;
   border-radius: 6px;
   border-left: 4px solid #667eea;
@@ -202,18 +214,18 @@
 
 .metric .label {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 }
 
 .metric .value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .metric .value.negative {
-  color: #ff6b6b;
+  color: var(--accent-red);
 }
 
 .details-grid {
@@ -224,21 +236,21 @@
 }
 
 .detail-item {
-  background: white;
+  background: var(--bg-surface-elevated);
   padding: 1rem;
   border-radius: 6px;
   border-left: 3px solid #764ba2;
 }
 
 .detail-item strong {
-  color: #333;
+  color: var(--text-primary);
   display: block;
   margin-bottom: 0.5rem;
 }
 
 .detail-item p {
   margin: 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -252,8 +264,8 @@
   display: flex;
   justify-content: space-between;
   padding: 1rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: white;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
 }
 
 .metrics-list li:last-child {
@@ -261,7 +273,7 @@
 }
 
 .metrics-list span:first-child {
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -278,31 +290,31 @@
 
 .insights-list li {
   padding: 1rem;
-  background: white;
+  background: var(--bg-surface-elevated);
   margin-bottom: 0.5rem;
   border-radius: 6px;
-  border-left: 3px solid #82ca9d;
-  color: #333;
+  border-left: 3px solid var(--accent-green);
+  color: var(--text-primary);
 }
 
 .description {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .empty-state {
   text-align: center;
   padding: 3rem;
-  color: #999;
+  color: var(--text-secondary);
   font-size: 1.1rem;
 }
 
 .no-data {
   text-align: center;
-  color: #999;
+  color: var(--text-secondary);
   padding: 2rem;
 }
 
