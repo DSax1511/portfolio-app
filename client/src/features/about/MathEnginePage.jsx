@@ -290,18 +290,20 @@ const MathEnginePage = () => {
     </button>
   );
 
-  const CategoryButton = ({ isActive, onClick, children }) => (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-        isActive
-          ? "bg-amber-500/60 text-white border border-amber-400"
-          : "bg-slate-900 text-slate-400 border border-slate-700 hover:border-slate-600 hover:text-slate-300"
-      }`}
-    >
-      {children}
-    </button>
-  );
+  const CategoryButton = ({ isActive, onClick, children }) => {
+    const baseClass = "px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer border";
+    const activeClass = "bg-blue-500/20 border-blue-400 text-blue-200 shadow-[0_0_12px_rgba(59,130,246,0.3)]";
+    const inactiveClass = "border-slate-700 text-slate-400 hover:bg-blue-500/10 hover:border-blue-500/40 hover:text-blue-300";
+    
+    return (
+      <button
+        onClick={onClick}
+        className={`${baseClass} ${isActive ? activeClass : inactiveClass}`}
+      >
+        {children}
+      </button>
+    );
+  };
 
   // ============================================================================
   // RENDER SECTIONS

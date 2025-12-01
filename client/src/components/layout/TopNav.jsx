@@ -1,4 +1,5 @@
 import React from "react";
+import MarketStatus from "./MarketStatus";
 
 const Icon = ({ children, size = 18 }) => (
   <svg
@@ -37,19 +38,13 @@ const TopNav = ({
 
   return (
     <header
-      className="top-nav"
+      className="top-nav sticky top-0 z-40 backdrop-blur-xl bg-black/50 border-b border-white/5 px-6 py-3.5 shadow-xl"
       style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 40,
-        backdropFilter: "blur(12px)",
-        background: "rgba(12, 17, 28, 0.7)",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
-        minHeight: "76px",
-        display: "flex",
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
         alignItems: "center",
-        padding: "14px 24px",
-        boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
+        gap: "16px",
+        minHeight: "76px",
       }}
     >
       {/* Glow accent behind logo */}
@@ -68,8 +63,8 @@ const TopNav = ({
         }}
       />
 
-      {/* Branding + breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1 }}>
+      {/* LEFT: Branding + breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
         <div
           style={{
             width: 44,
@@ -80,6 +75,7 @@ const TopNav = ({
             display: "grid",
             placeItems: "center",
             boxShadow: "0 8px 30px rgba(79,140,255,0.25)",
+            flexShrink: 0,
           }}
         >
           <Icon size={22}>
@@ -88,23 +84,28 @@ const TopNav = ({
             <circle cx="12" cy="18" r="1.2" />
           </Icon>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontWeight: 700, fontSize: "18px", letterSpacing: "0.2px" }}>Saxton PI</span>
+            <span style={{ fontWeight: 700, fontSize: "18px", letterSpacing: "0.2px", whiteSpace: "nowrap" }}>Saxton PI</span>
             <span className="muted" style={{ fontSize: "13px" }}>
               Portfolio Intelligence
             </span>
           </div>
           {breadcrumb ? (
-            <span className="label-sm" style={{ color: "#9ca3af" }}>
+            <span className="label-sm" style={{ color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {breadcrumb}
             </span>
           ) : null}
         </div>
       </div>
 
-      {/* Action cluster */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      {/* CENTER: Market Status (hidden on mobile) */}
+      <div className="hidden lg:flex justify-center">
+        <MarketStatus />
+      </div>
+
+      {/* RIGHT: Action cluster */}
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>
         {/* Upload + format actions */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
