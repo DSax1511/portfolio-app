@@ -1,11 +1,14 @@
+import type { ApiErrorResponse } from "../types/errors";
+import { isApiErrorResponse } from "../types/errors";
+
 /**
  * API base URL resolution (improved for production deployments):
- * 
+ *
  * Priority order:
  * 1. VITE_API_BASE_URL environment variable (set in .env or deployment config)
  * 2. Same origin (recommended for production - backend served from same domain)
  * 3. Localhost fallback for local dev (http://localhost:8000)
- * 
+ *
  * Usage:
  * - Local dev: No env var needed, auto-detects localhost:8000
  * - Docker Compose: Set VITE_API_BASE_URL=http://backend:8000 in frontend service
@@ -48,14 +51,22 @@ export class ApiClientError extends Error {
   url: string;
   details?: unknown;
   isNetworkError: boolean;
+  errorResponse?: ApiErrorResponse;  // Structured error from backend
 
-  constructor(message: string, options: { url: string; status?: number; details?: unknown; isNetworkError?: boolean }) {
+  constructor(message: string, options: {
+    url: string;
+    status?: number;
+    details?: unknown;
+    isNetworkError?: boolean;
+    errorResponse?: ApiErrorResponse;
+  }) {
     super(message);
     this.name = "ApiClientError";
     this.url = options.url;
     this.status = options.status;
     this.details = options.details;
     this.isNetworkError = Boolean(options.isNetworkError);
+    this.errorResponse = options.errorResponse;
   }
 }
 
@@ -64,9 +75,33 @@ const normalizeError = async (res: Response) => {
   if (contentType.includes("application/json")) {
     try {
       const data = await res.json();
-      if ((data as any)?.detail) {
-        return { message: `${res.status} ${res.statusText}: ${(data as any).detail}`, details: data };
+
+      // Check if this is our new standardized error format
+      if (isApiErrorResponse(data)) {
+        return {
+          message: data.message,
+          details: data,
+          errorResponse: data as ApiErrorResponse
+        };
       }
+
+      // Legacy format: FastAPI's HTTPException returns {detail: string}
+      if ((data as any)?.detail) {
+        const detail = (data as any).detail;
+
+        // Check if detail itself is a structured error (for backward compat)
+        if (typeof detail === "object" && isApiErrorResponse(detail)) {
+          return {
+            message: detail.message,
+            details: detail,
+            errorResponse: detail as ApiErrorResponse
+          };
+        }
+
+        // Plain string detail
+        return { message: String(detail), details: data };
+      }
+
       return { message: `${res.status} ${res.statusText}: ${JSON.stringify(data)}`, details: data };
     } catch {
       /* fall through */
@@ -81,8 +116,8 @@ const handleRequest = async <T>(path: string, init: RequestInit) => {
   try {
     const res = await fetch(url, init);
     if (!res.ok) {
-      const { message, details } = await normalizeError(res);
-      throw new ApiClientError(message, { url, status: res.status, details });
+      const { message, details, errorResponse } = await normalizeError(res);
+      throw new ApiClientError(message, { url, status: res.status, details, errorResponse });
     }
     return (await res.json()) as T;
   } catch (err: any) {

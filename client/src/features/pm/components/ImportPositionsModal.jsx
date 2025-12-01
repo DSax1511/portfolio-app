@@ -56,7 +56,8 @@ const ImportPositionsModal = ({ isOpen, onClose, onImportSuccess }) => {
         uniqueTickers: [...new Set(positions.map((p) => p.ticker))].length,
         benchmark: "SPY",
       };
-      onImportSuccess(summary);
+      // Pass the positions data along with the summary
+      onImportSuccess(summary, positions);
       onClose();
     } catch (err) {
       console.error("File upload error:", err);

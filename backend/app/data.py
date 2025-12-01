@@ -5,7 +5,7 @@ import datetime as dt
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ import yfinance as yf
 from fastapi import HTTPException
 
 from .config import settings
+from .errors import ErrorCode
 from .infra.utils import parse_date
 
 logger = logging.getLogger(__name__)
@@ -32,10 +33,10 @@ def _fetch_from_yf_sync(
     end: Optional[dt.date],
     max_retries: int = 5,
     base_delay: float = 2.0
-) -> pd.Series:
+) -> Tuple[pd.Series, bool]:
     """
     Synchronous yfinance fetch with exponential backoff retry logic.
-    
+
     Enhanced for Render environment:
     - Increased max_retries to 5 (from 3) for better reliability
     - Increased base_delay to 2.0s (from 1.0s) for rate limit recovery
@@ -49,10 +50,15 @@ def _fetch_from_yf_sync(
         base_delay: Base delay in seconds for exponential backoff (default: 2.0)
 
     Returns:
-        pandas Series with price data, or empty Series if all retries fail
+        Tuple of (pandas Series with price data, is_network_error)
+        - Series will be empty if fetch failed
+        - is_network_error=True if failure was due to network/upstream issues
     """
+    last_exception = None
+
     for attempt in range(max_retries):
         try:
+            logger.info(f"Fetching {ticker} from yfinance (attempt {attempt + 1}/{max_retries})")
             data = yf.download(
                 tickers=[ticker],
                 start=start,
@@ -62,54 +68,95 @@ def _fetch_from_yf_sync(
                 group_by="ticker",
             )
             if data.empty:
-                logger.warning(f"No data returned for {ticker} (attempt {attempt + 1}/{max_retries})")
-                return pd.Series(dtype=float)
+                logger.warning(f"No data returned for {ticker} - ticker may not exist or have no history")
+                return pd.Series(dtype=float), False  # Not a network error, just no data
 
             # Extract Close prices
             if isinstance(data.columns, pd.MultiIndex):
                 close = data.loc[:, (slice(None), "Close")]
                 close.columns = [c[0] for c in close.columns]
-                return close.iloc[:, 0]
-            return data["Close"]
+                logger.info(f"Successfully fetched {len(close)} datapoints for {ticker}")
+                return close.iloc[:, 0], False
+            logger.info(f"Successfully fetched {len(data)} datapoints for {ticker}")
+            return data["Close"], False
 
         except Exception as e:
+            last_exception = e
+            # Check if this is a network/connection error
+            is_network = any(
+                err_type in str(type(e).__name__)
+                for err_type in ["ConnectionError", "Timeout", "HTTPError", "URLError"]
+            )
+
             if attempt < max_retries - 1:
                 # Exponential backoff: 2s, 4s, 8s, 16s, 32s
                 delay = base_delay * (2 ** attempt)
                 logger.warning(
-                    f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): {e}. "
-                    f"Retrying in {delay}s..."
+                    f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): "
+                    f"{type(e).__name__}: {e}. Retrying in {delay}s..."
                 )
                 time.sleep(delay)
             else:
-                logger.error(f"Failed to fetch {ticker} after {max_retries} attempts: {e}")
-                return pd.Series(dtype=float)
+                logger.error(
+                    f"Failed to fetch {ticker} after {max_retries} attempts. "
+                    f"Last error: {type(e).__name__}: {e}"
+                )
+                # If we exhausted retries and had network errors, mark as network issue
+                return pd.Series(dtype=float), is_network
 
-    return pd.Series(dtype=float)
+    # Shouldn't reach here, but return network error if we did
+    return pd.Series(dtype=float), True
 
 
-async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
+async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> Tuple[pd.Series, bool]:
     """
     Async wrapper with rate-limiting semaphore to prevent overwhelming yfinance.
     Limits concurrent requests to 2 at a time on Render.
+
+    Returns:
+        Tuple of (price series, is_network_error)
     """
     async with _yf_semaphore:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
 
 
-def _synthetic_price_series(ticker: str, start: dt.date, end: Optional[dt.date]) -> pd.Series:
+def _raise_data_error(ticker: str, is_network_error: bool = False) -> None:
     """
-    DEPRECATED: This function exists only for backward compatibility.
-    Synthetic data undermines credibility and is NOT used in production.
-    Always fail explicitly if real data is unavailable.
+    Raise appropriate HTTPException based on error type.
+
+    Args:
+        ticker: The ticker symbol that failed
+        is_network_error: True if this was a network/upstream failure,
+                         False if ticker simply has no data
+
+    Raises:
+        HTTPException with appropriate status code and structured error response
     """
-    raise HTTPException(
-        status_code=503,
-        detail=f"Data unavailable for {ticker}. Unable to fetch from yFinance. "
-               f"Please check: (1) ticker symbol is correct, (2) network connection, "
-               f"(3) try again in a moment. We do not use synthetic data."
-    )
+    if is_network_error:
+        # 503 Service Unavailable: upstream data provider issue
+        logger.error(f"Upstream data provider error for {ticker}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": ErrorCode.UPSTREAM_ERROR,
+                "http_status": 503,
+                "message": "Market data temporarily unavailable from our data provider. Please try again in a few moments.",
+                "details": {"ticker": ticker, "retry_after": 60}
+            }
+        )
+    else:
+        # 404 Not Found: ticker symbol not found or no data available
+        logger.warning(f"No data available for ticker: {ticker}")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": ErrorCode.DATA_UNAVAILABLE,
+                "http_status": 404,
+                "message": f"No historical data available for ticker '{ticker}'. Please verify the symbol is correct.",
+                "details": {"ticker": ticker}
+            }
+        )
 
 
 def _load_cached(ticker: str, ttl_hours: int = 24) -> pd.Series:
@@ -180,32 +227,52 @@ def _save_cache(ticker: str, series: pd.Series) -> None:
 
 async def _fetch_single_ticker_async(
     ticker: str, start_date: dt.date, end_date: Optional[dt.date]
-) -> tuple[str, pd.Series]:
-    """Fetch a single ticker's price history, with caching and fallback."""
+) -> Tuple[str, pd.Series]:
+    """
+    Fetch a single ticker's price history, with caching and fallback.
+
+    This function prioritizes cached data and only fetches from yfinance when needed.
+    If both fetch and cache fail, it raises an appropriate HTTP exception.
+
+    Returns:
+        Tuple of (ticker, price_series)
+
+    Raises:
+        HTTPException: If data cannot be obtained from cache or yfinance
+    """
     cached = _load_cached(ticker)
     need_fetch = (
         cached.empty
         or cached.index.min().date() > start_date
         or (end_date and cached.index.max().date() < end_date)
     )
-    
+
     if need_fetch:
         fetched = pd.Series(dtype=float)
+        is_network_error = False
+
         try:
-            fetched = await _fetch_from_yf_async(ticker, start_date, end_date)
+            fetched, is_network_error = await _fetch_from_yf_async(ticker, start_date, end_date)
             # Add small delay between requests to be nice to Yahoo Finance
             await asyncio.sleep(0.5)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {ticker}: {e}")
+            is_network_error = True
             fetched = pd.Series(dtype=float)
-        
+
+        # Determine what to return or if we should raise an error
         if fetched.empty and cached.empty:
-            series = _synthetic_price_series(ticker, start_date, end_date)
+            # No data from fetch or cache - raise appropriate error
+            _raise_data_error(ticker, is_network_error)
         else:
+            # Use fetched data if available, otherwise fall back to cache
             series = fetched if not fetched.empty else cached
-            _save_cache(ticker, series)
+            if not fetched.empty:
+                _save_cache(ticker, series)
     else:
+        # Cache is sufficient
         series = cached
-    
+
     return ticker, series.rename(ticker)
 
 

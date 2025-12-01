@@ -2,8 +2,6 @@ import { useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import "../App.css";
-import { portfolioApi } from "../services/portfolioApi";
-import { apiBaseUrl } from "../services/apiClient";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import TopNav from "../components/layout/TopNav";
@@ -349,25 +347,41 @@ const AppContent = () => {
       setActiveDemo(null);
     }
 
-    // If positions were provided (from manual entry), set them directly
-    if (positions) {
-      // Convert manual entry format to position format expected by the app
-      const formattedPositions = positions.map((p) => ({
-        ticker: p.ticker,
-        description: p.ticker,
-        quantity: p.quantity,
-        avg_cost: p.costBasis || 0,
-        current_price: 0, // Will be fetched
-        market_value: 0,
-        pnl: 0,
-      }));
-      setPositions(formattedPositions);
+    // If positions were provided, set them
+    if (positions && positions.length > 0) {
+      // Check if positions are already in the correct format (from file upload)
+      // or need conversion (from manual entry)
+      const hasBackendFormat = positions[0].hasOwnProperty('current_price');
+
+      if (hasBackendFormat) {
+        // Already formatted by backend (file upload)
+        setPositions(positions);
+      } else {
+        // Manual entry format - needs conversion
+        const formattedPositions = positions.map((p) => ({
+          ticker: p.ticker,
+          description: p.ticker,
+          quantity: p.quantity,
+          avg_cost: p.costBasis || 0,
+          current_price: 0, // Will be fetched
+          market_value: 0,
+          pnl: 0,
+        }));
+        setPositions(formattedPositions);
+      }
     }
+
+    // Clear any previous upload errors
+    setUploadError("");
 
     // Show success toast message
     const message = `Imported ${summary.positionsCount} positions across ${summary.uniqueTickers} tickers. Benchmark: ${summary.benchmark}.`;
     console.log("Import success:", message);
-    // You can integrate a toast notification library here if desired
+
+    // Navigate to dashboard if not already there
+    if (!location.pathname.startsWith("/pm/dashboard")) {
+      navigate("/pm/dashboard");
+    }
   };
 
   const loadDemoPortfolio = (demo) => {
