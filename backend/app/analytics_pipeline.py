@@ -280,13 +280,11 @@ def _build_payload(port_returns: pd.Series, bench_returns: Optional[pd.Series], 
     "params": params,
     "summary": summary,
     "equity_curve": {"dates": [d.strftime("%Y-%m-%d") for d in equity.index], "equity": [float(v) for v in equity.values]},
-    "benchmark_curve": bench_equity
-    and {"dates": [d.strftime("%Y-%m-%d") for d in bench_equity.index], "equity": [float(v) for v in bench_equity.values]},
-    "relative_curve": bench_equity
-    and {
+    "benchmark_curve": {"dates": [d.strftime("%Y-%m-%d") for d in bench_equity.index], "equity": [float(v) for v in bench_equity.values]} if bench_equity is not None else None,
+    "relative_curve": {
       "dates": [d.strftime("%Y-%m-%d") for d in equity.index],
       "relative": [float(p - b) for p, b in zip(equity.values, bench_equity.values)],
-    },
+    } if bench_equity is not None else None,
     "returns": [float(r) for r in port_returns],
     "benchmark_returns": [float(r) for r in bench_aligned] if bench_aligned is not None else None,
     "drawdown_series": drawdowns.to_dict(orient="records"),
