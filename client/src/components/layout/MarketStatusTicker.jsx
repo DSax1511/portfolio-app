@@ -97,70 +97,72 @@ export const MarketStatusTicker = () => {
   const marketOpen = useMemo(() => isUsMarketOpen(eastern), [eastern]);
 
   const activeTicker = tickers[tickerIndex];
-  const positive = activeTicker.change_pct > 0;
-  const negative = activeTicker.change_pct < 0;
 
-  const statusLabel = marketOpen ? "US MARKET: OPEN" : "US MARKET: CLOSED";
-  const statusColor = marketOpen ? "text-emerald-300" : "text-slate-400";
-  const dotColor = marketOpen ? "bg-emerald-400" : "bg-slate-500";
-  const dotGlow = marketOpen ? "shadow-[0_0_6px_rgba(16,185,129,0.7)]" : "";
+  if (!activeTicker) {
+    return null;
+  }
 
   return (
-    <div className="inline-flex flex-col gap-1 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-[11px] md:text-xs shadow-sm shadow-black/40">
-      {/* Line 1: Date + Status */}
-      <div className="flex items-center gap-2">
-        <span className="text-slate-300 font-medium">{formattedDate}</span>
-        <span className="h-3 w-px bg-slate-700/80" />
-        <div className="flex items-center gap-1.5">
+    <div className="inline-flex flex-col gap-1 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-2 shadow-[0_0_24px_rgba(15,23,42,0.7)] text-xs md:text-[13px] min-w-[260px] max-w-[360px] pointer-events-auto">
+      {/* Top row: status + date */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
           <span
-            className={`h-2 w-2 rounded-full ${dotColor} ${dotGlow}`}
+            className={`inline-block h-2.5 w-2.5 rounded-full ${
+              marketOpen
+                ? "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.7)]"
+                : "bg-slate-500"
+            }`}
           />
           <span
-            className={`tracking-wide font-semibold uppercase ${statusColor}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-        {error && (
-          <span className="text-[9px] text-slate-500">(offline)</span>
-        )}
-      </div>
-
-      {/* Line 2: Rotating ticker */}
-      <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-slate-300">
-        <span className="text-slate-500 uppercase tracking-wide">Indices</span>
-        <span className="h-3 w-px bg-slate-700/80" />
-        <div
-          className={`flex items-baseline gap-1 transition-opacity duration-150 ${
-            fade ? "opacity-0 translate-y-0.5" : "opacity-100"
-          }`}
-        >
-          <span className="font-semibold text-slate-100">
-            {activeTicker.symbol}
-          </span>
-          <span className="text-slate-400">
-            {activeTicker.last.toFixed(2)}
-          </span>
-          <span
-            className={`font-medium ${
-              positive
-                ? "text-emerald-400"
-                : negative
-                ? "text-red-400"
-                : "text-slate-300"
+            className={`uppercase tracking-wide font-semibold text-[10px] md:text-[11px] ${
+              marketOpen ? "text-emerald-300" : "text-slate-400"
             }`}
           >
-            {positive && "+"}
-            {activeTicker.change_pct.toFixed(2)}%
+            US MARKET: {marketOpen ? "OPEN" : "CLOSED"}
           </span>
         </div>
-        {asOf && (
-          <span className="text-[9px] text-slate-500 ml-1">
-            {new Date(asOf).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "America/New_York",
-            })} ET
+        <span className="whitespace-nowrap text-slate-300 font-medium">
+          {formattedDate}
+        </span>
+      </div>
+
+      {/* Bottom row: indices + ticker + offline badge */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="uppercase text-[10px] tracking-wide text-slate-500">
+            Indices
+          </span>
+          <span className="text-slate-600">·</span>
+          <div
+            className={`flex items-baseline gap-1 min-w-0 transition-opacity duration-150 ${
+              fade ? "opacity-0" : "opacity-100"
+            }`}
+          >
+            <span className="font-semibold text-slate-100">
+              {activeTicker.symbol}
+            </span>
+            <span className="text-slate-300">
+              {activeTicker.last.toFixed(2)}
+            </span>
+            <span
+              className={`font-medium ${
+                activeTicker.change_pct > 0
+                  ? "text-emerald-400"
+                  : activeTicker.change_pct < 0
+                  ? "text-red-400"
+                  : "text-slate-300"
+              }`}
+            >
+              {activeTicker.change_pct > 0 && "+"}
+              {activeTicker.change_pct.toFixed(2)}%
+            </span>
+          </div>
+        </div>
+
+        {error && (
+          <span className="ml-2 rounded-full border border-slate-700 bg-slate-900 px-2 py-[2px] text-[10px] font-medium text-slate-400">
+            offline
           </span>
         )}
       </div>

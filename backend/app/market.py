@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -64,6 +65,11 @@ def _fetch_market_snapshot() -> Dict[str, Any]:
             # Get previous close and latest close
             prev_close = float(df["Close"].iloc[-2])
             last = float(df["Close"].iloc[-1])
+
+            # Skip if we got NaN values
+            if math.isnan(prev_close) or math.isnan(last):
+                logger.warning(f"NaN values for {symbol}, skipping")
+                continue
 
             # Calculate daily % change
             change_pct = ((last / prev_close - 1.0) * 100.0) if prev_close != 0 else 0.0
