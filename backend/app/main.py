@@ -502,6 +502,7 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
         request.start_date,
         request.end_date,
         request.rebalance_freq,
+        request.trading_cost_bps or 0.0,
     )
     summary = analytics_payload.get("summary", {})
 
@@ -556,13 +557,20 @@ def v2_backtest_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
     start = request.get("start_date")
     end = request.get("end_date")
     rebalance_freq = request.get("rebalance_freq")
+    trading_cost_bps = request.get("trading_cost_bps", 0.0)
     if not tickers:
         raise HTTPException(status_code=400, detail="tickers required")
-    result = backtest_analytics(tickers, weights, benchmark, start, end, rebalance_freq)
+    result = backtest_analytics(tickers, weights, benchmark, start, end, rebalance_freq, trading_cost_bps)
     try:
         run_id = _persist_run(
             "backtest",
-            {"tickers": tickers, "weights": weights, "benchmark": benchmark, "rebalance_freq": rebalance_freq or "none"},
+            {
+                "tickers": tickers,
+                "weights": weights,
+                "benchmark": benchmark,
+                "rebalance_freq": rebalance_freq or "none",
+                "trading_cost_bps": trading_cost_bps,
+            },
             pd.Series(result.get("returns") or []),
             result.get("summary") or {},
             meta={"label": f"{tickers}", "benchmark": benchmark},

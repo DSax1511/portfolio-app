@@ -403,6 +403,7 @@ class PMBacktestRequest(BaseModel):
     end_date: Optional[str] = None
     rebalance_freq: Optional[str] = Field("none", description="none, monthly, quarterly, annual")
     benchmark: Optional[str] = Field("SPY", description="Benchmark ticker, defaults to SPY")
+    trading_cost_bps: Optional[float] = Field(0.0, description="Trading cost in basis points per 100% turnover")
 
     @validator("tickers", allow_reuse=True)
     def normalize_pm_tickers(cls, v: List[str]) -> List[str]:
@@ -420,6 +421,14 @@ class PMBacktestRequest(BaseModel):
             raise ValueError("weights length must match tickers length.")
         if sum(v) == 0:
             raise ValueError("weights must sum to a non-zero value.")
+        return v
+
+    @validator("trading_cost_bps", allow_reuse=True)
+    def validate_trading_costs(cls, v: Optional[float]) -> float:
+        if v is None:
+            return 0.0
+        if v < 0:
+            raise ValueError("trading_cost_bps must be non-negative")
         return v
 
 

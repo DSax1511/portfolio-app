@@ -127,6 +127,7 @@ export const portfolioApi = {
     start_date?: string | null;
     end_date?: string | null;
     rebalance_freq?: string | null;
+    trading_cost_bps?: number | null;
   }) => apiClient.post("/api/v2/backtest-analytics", payload),
 
   getRun: (runId: string) => apiClient.get(`/api/runs/${runId}`),
@@ -158,7 +159,7 @@ export const portfolioApi = {
     rebalance_freq?: string | null;
     benchmark?: string | null;
   }) => apiClient.post("/api/v1/pm/backtest", payload),
-  getPMBacktestDemo: () => apiClient.get<PMBacktestResponse>("/api/v1/pm/backtest/demo"),
+  getPMBacktestDemo: () => apiClient.get("/api/v1/pm/backtest/demo"),
 
   getPMAllocation: (payload: {
     tickers: string[];

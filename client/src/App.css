@@ -41,12 +41,22 @@
   color-scheme: dark;
 }
 
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
   background: var(--bg-page);
   color: var(--text-primary);
   font-size: 14px;
+  line-height: 1.5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
 }
 
 a {
@@ -117,10 +127,10 @@ a {
 }
 
 .btn-primary {
-  background: linear-gradient(120deg, var(--accent) 0%, var(--accent-soft) 100%);
+  background: linear-gradient(120deg, #6ba3ff 0%, #8ab5ff 100%);
   border: none;
   color: #0b1020;
-  box-shadow: 0 12px 30px rgba(79, 140, 255, 0.35);
+  box-shadow: 0 12px 30px rgba(107, 163, 255, 0.35);
 }
 
 .btn-ghost {
@@ -136,6 +146,8 @@ a {
   padding: var(--space-6) var(--space-7) var(--space-8);
 }
 
+/* Sidebar */
+
 .sidebar {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -148,15 +160,10 @@ a {
   position: sticky;
   top: 84px;
   height: fit-content;
+  width: 256px;
+  flex-shrink: 0;
 }
 
-.sidebar h4 {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
 
 .nav-links {
   display: flex;
@@ -264,19 +271,23 @@ a {
   gap: var(--space-5);
 }
 
+/* Unified card style */
+
 .card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.4rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .card:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
 }
+
 
 .card-header {
   display: flex;
@@ -688,6 +699,15 @@ tr:hover td {
 th.numeric,
 td.numeric {
   text-align: right;
+}
+
+.data-table {
+  font-size: 0.9rem;
+}
+
+.ticker-cell {
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .pill {

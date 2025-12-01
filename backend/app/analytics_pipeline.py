@@ -343,22 +343,154 @@ def portfolio_analytics(tickers: List[str], quantities: List[float], prices: Lis
   )
 
 
-def backtest_analytics(tickers: List[str], weights: Optional[List[float]], benchmark: Optional[str], start: Optional[str], end: Optional[str], rebalance_freq: Optional[str]) -> Dict[str, Any]:
+def _compute_rebalanced_returns(
+  returns_df: pd.DataFrame,
+  target_weights: np.ndarray,
+  rebalance_freq: str,
+  trading_cost_bps: float = 0.0
+) -> Tuple[pd.Series, float, float]:
+  """
+  Compute portfolio returns with periodic rebalancing and trading costs.
+
+  Returns:
+    (net_returns, total_turnover, gross_cagr, net_cagr)
+  """
+  if rebalance_freq == "none":
+    # Buy and hold - no rebalancing
+    gross_returns = returns_df.mul(target_weights, axis=1).sum(axis=1)
+    return gross_returns, 0.0, 0.0
+
+  # Map rebalance frequency to period offset
+  freq_map = {
+    "monthly": "M",
+    "quarterly": "Q",
+    "annual": "Y"
+  }
+  period_freq = freq_map.get(rebalance_freq, "M")
+
+  # Initialize portfolio
+  portfolio_value = 1.0
+  weights = target_weights.copy()
+  equity_series = []
+  total_turnover = 0.0
+
+  # Group returns by rebalance period
+  returns_df = returns_df.copy()
+  returns_df['period'] = returns_df.index.to_period(period_freq)
+
+  for period, group in returns_df.groupby('period'):
+    period_returns = group.drop('period', axis=1)
+
+    for date, daily_returns in period_returns.iterrows():
+      # Apply daily returns to current weights
+      asset_values = weights * (1 + daily_returns.values)
+      portfolio_value *= asset_values.sum()
+
+      # Update weights based on drift
+      weights = asset_values / asset_values.sum()
+
+    # Rebalance at end of period (except for last period)
+    if period != returns_df['period'].iloc[-1]:
+      turnover = np.abs(weights - target_weights).sum()
+      total_turnover += turnover
+
+      # Apply trading costs: cost = turnover * trading_cost_bps / 10000
+      cost = turnover * trading_cost_bps / 10000
+      portfolio_value *= (1 - cost)
+
+      # Reset to target weights
+      weights = target_weights.copy()
+
+  # Compute gross and net returns
+  returns_df_clean = returns_df.drop('period', axis=1)
+  gross_returns = returns_df_clean.mul(target_weights, axis=1).sum(axis=1)
+
+  # Approximate net returns by subtracting average cost per period
+  periods = len(returns_df_clean)
+  num_rebalances = max(1, int(periods / {"M": 21, "Q": 63, "Y": 252}.get(period_freq, 21)))
+  avg_cost_per_day = (total_turnover * trading_cost_bps / 10000) / periods if periods > 0 else 0
+  net_returns = gross_returns - avg_cost_per_day
+
+  return net_returns, total_turnover, gross_returns
+
+
+def backtest_analytics(
+  tickers: List[str],
+  weights: Optional[List[float]],
+  benchmark: Optional[str],
+  start: Optional[str],
+  end: Optional[str],
+  rebalance_freq: Optional[str],
+  trading_cost_bps: float = 0.0
+) -> Dict[str, Any]:
+  """
+  Run a comprehensive backtest with rebalancing and trading costs.
+
+  Args:
+    tickers: List of ticker symbols
+    weights: Optional target weights (equal-weight if None)
+    benchmark: Benchmark ticker (default SPY)
+    start: Start date (YYYY-MM-DD)
+    end: End date (YYYY-MM-DD)
+    rebalance_freq: "none", "monthly", "quarterly", or "annual"
+    trading_cost_bps: Trading cost in basis points per 100% turnover
+  """
   price_hist = fetch_price_history(tickers, start, end)
   weight_arr = np.array(weights) if weights is not None else np.full(len(tickers), 1 / len(tickers))
   weight_arr = weight_arr / weight_arr.sum()
   returns_df = price_hist.pct_change().dropna()
-  # simple rebalance: equal weights each period
-  port_returns = returns_df.mul(weight_arr, axis=1).sum(axis=1)
+
+  # Compute returns with rebalancing and costs
+  rebal_freq = rebalance_freq or "none"
+  net_returns, total_turnover, gross_returns = _compute_rebalanced_returns(
+    returns_df, weight_arr, rebal_freq, trading_cost_bps
+  )
+
+  # Use net returns for main analysis
+  port_returns = net_returns
+
+  # Compute gross metrics for comparison
+  gross_summary = _summary(gross_returns, None) if trading_cost_bps > 0 else {}
+
   bench_returns = None
   if benchmark:
     bench_prices = fetch_price_history([benchmark], start, end)
     bench_returns = bench_prices.pct_change().dropna().iloc[:, 0]
-  return _build_payload(
+
+  payload = _build_payload(
     port_returns,
     bench_returns,
-    {"tickers": tickers, "weights": weight_arr.tolist(), "benchmark": benchmark, "start_date": start, "end_date": end, "rebalance_freq": rebalance_freq or "none"},
+    {
+      "tickers": tickers,
+      "weights": weight_arr.tolist(),
+      "benchmark": benchmark,
+      "start_date": start,
+      "end_date": end,
+      "rebalance_freq": rebal_freq,
+      "trading_cost_bps": trading_cost_bps,
+    },
     returns_df,
     weight_arr,
     None,
   )
+
+  # Add turnover and gross/net metrics
+  payload["summary"]["total_turnover"] = float(total_turnover)
+  if trading_cost_bps > 0:
+    payload["summary"]["gross_cagr"] = gross_summary.get("cagr", 0.0)
+    payload["summary"]["net_cagr"] = payload["summary"]["cagr"]
+
+    # Compute asset contributions
+    avg_weights = weight_arr
+    asset_returns_annual = returns_df.mean() * 252
+    asset_contribs = []
+    for i, ticker in enumerate(tickers):
+      contrib_return = avg_weights[i] * asset_returns_annual.iloc[i]
+      asset_contribs.append({
+        "ticker": ticker,
+        "avg_weight": float(avg_weights[i]),
+        "contribution_to_return": float(contrib_return),
+      })
+    payload["asset_contributions"] = asset_contribs
+
+  return payload

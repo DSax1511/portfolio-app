@@ -315,7 +315,7 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  background: linear-gradient(135deg, #6ba3ff 0%, #8ab5ff 100%);
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -329,7 +329,7 @@
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(17, 153, 142, 0.3);
+  box-shadow: 0 10px 20px rgba(107, 163, 255, 0.3);
 }
 
 .btn-primary:disabled {
@@ -468,20 +468,20 @@
 }
 
 .btn-refresh {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  background: linear-gradient(135deg, #6ba3ff 0%, #8ab5ff 100%);
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 1rem;
+  transition: all 0.2s;
   font-size: 1rem;
 }
 
 .btn-refresh:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(17, 153, 142, 0.3);
+  box-shadow: 0 10px 20px rgba(107, 163, 255, 0.3);
 }
 
 .btn-refresh:disabled {
