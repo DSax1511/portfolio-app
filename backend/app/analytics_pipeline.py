@@ -14,10 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def _equity_from_returns(rets: pd.Series) -> pd.Series:
+  """Convert return series to cumulative equity curve starting at 1."""
   return (1 + rets).cumprod()
 
 
 def _drawdown_series(rets: pd.Series) -> pd.DataFrame:
+  """Calculate drawdown series from returns. Returns DataFrame with dates and drawdown percentages relative to running peak."""
   equity = _equity_from_returns(rets)
   running_max = equity.cummax()
   dd = equity / running_max - 1
@@ -89,6 +91,7 @@ def _top_drawdowns(drawdowns: pd.DataFrame, top_n: int = 5) -> List[Dict[str, An
 
 
 def _monthly_returns(rets: pd.Series) -> List[Dict[str, Any]]:
+  """Aggregate daily returns into monthly periods. Returns list of dicts with year, month, and return percentage."""
   if rets.empty:
     return []
   monthly = rets.resample("M").apply(lambda x: (1 + x).prod() - 1)
@@ -99,6 +102,7 @@ def _monthly_returns(rets: pd.Series) -> List[Dict[str, Any]]:
 
 
 def _rolling_stats(port: pd.Series, bench: Optional[pd.Series], window: int = 60) -> List[Dict[str, Any]]:
+  """Compute rolling volatility, Sharpe ratio, and beta over a fixed window. Returns time series of rolling metrics for visualization."""
   if port.empty:
     return []
   aligned = pd.concat([port, bench] if bench is not None else [port], axis=1).dropna()
@@ -127,6 +131,8 @@ def _rolling_stats(port: pd.Series, bench: Optional[pd.Series], window: int = 60
 
 
 def _summary(port: pd.Series, bench: Optional[pd.Series]) -> Dict[str, float]:
+  """Calculate comprehensive performance metrics including returns, volatility, drawdown, and risk-adjusted ratios.
+  If benchmark provided, also computes alpha, beta, and tracking error via linear regression."""
   if port.empty:
     return {}
   periods = 252
@@ -169,6 +175,7 @@ def _summary(port: pd.Series, bench: Optional[pd.Series]) -> Dict[str, float]:
 
 
 def _period_stats(monthly_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+  """Compute summary statistics from monthly return data. Returns hit rate, best/worst periods, and average monthly return."""
   if not monthly_rows:
     return {}
   rets = pd.Series({f"{r['year']}-{r['month']:02d}": r["returnPct"] for r in monthly_rows})
@@ -183,6 +190,7 @@ def _period_stats(monthly_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _factor_model(port_returns: pd.Series, bench_returns: Optional[pd.Series], asset_returns: pd.DataFrame) -> Dict[str, Any]:
+  """Perform factor decomposition using market factor and PCA-derived style factors. Returns factor loadings, variance contributions, and model fit statistics."""
   if port_returns.empty:
     return {"factors": [], "r2": 0.0, "residual_vol": 0.0}
   factors: List[Tuple[str, pd.Series]] = []
@@ -226,6 +234,7 @@ def _factor_model(port_returns: pd.Series, bench_returns: Optional[pd.Series], a
 
 
 def _correlation_matrix(asset_returns: pd.DataFrame) -> List[Dict[str, Any]]:
+  """Generate pairwise correlation matrix for all assets. Returns list of correlation coefficients for frontend heatmap visualization."""
   if asset_returns.empty:
     return []
   corr = asset_returns.corr()
@@ -237,6 +246,7 @@ def _correlation_matrix(asset_returns: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def _var_cvar(port_returns: pd.Series) -> Dict[str, float]:
+  """Calculate Value at Risk and Conditional VaR at 95% and 99% confidence levels. Uses both parametric and historical methods."""
   if port_returns.empty:
     return {}
   mu = float(port_returns.mean())
@@ -259,6 +269,7 @@ def _var_cvar(port_returns: pd.Series) -> Dict[str, float]:
 
 
 def _risk_attribution(asset_returns: pd.DataFrame, weights: np.ndarray, sectors: Optional[List[str]] = None) -> Dict[str, Any]:
+  """Decompose portfolio variance into individual asset and sector contributions. Uses marginal contribution methodology based on covariance matrix."""
   if asset_returns.empty:
     return {"by_ticker": [], "by_sector": []}
   cov = asset_returns.cov().values
@@ -289,6 +300,7 @@ def _risk_attribution(asset_returns: pd.DataFrame, weights: np.ndarray, sectors:
 
 
 def _return_distribution(port_returns: pd.Series, bins: int = 21) -> Dict[str, Any]:
+  """Analyze return distribution characteristics including histogram, skewness, kurtosis, and tail events. Identifies worst single-day and 5-day periods."""
   if port_returns.empty:
     return {"histogram": [], "skew": 0.0, "kurtosis": 0.0, "worst_1d": 0.0, "worst_5d": 0.0}
   hist, edges = np.histogram(port_returns, bins=bins)
@@ -306,6 +318,7 @@ def _return_distribution(port_returns: pd.Series, bins: int = 21) -> Dict[str, A
 
 
 def _build_payload(port_returns: pd.Series, bench_returns: Optional[pd.Series], params: Dict[str, Any], asset_returns: Optional[pd.DataFrame] = None, weights: Optional[np.ndarray] = None, sectors: Optional[List[str]] = None) -> Dict[str, Any]:
+  """Assemble complete analytics payload by orchestrating all metric calculations. Returns comprehensive dict with performance, risk, and attribution data for frontend consumption."""
   bench_aligned = None
   if bench_returns is not None:
     bench_aligned = bench_returns.reindex(port_returns.index).ffill().bfill()
@@ -371,6 +384,7 @@ def _build_payload(port_returns: pd.Series, bench_returns: Optional[pd.Series], 
 
 
 def portfolio_analytics(tickers: List[str], quantities: List[float], prices: List[float], benchmark: Optional[str], start: Optional[str], end: Optional[str], sectors: Optional[List[str]] = None) -> Dict[str, Any]:
+  """Generate analytics for a live portfolio based on current holdings. Computes returns from position values and calculates comprehensive metrics vs benchmark."""
   price_hist = fetch_price_history(tickers, start, end)
   current_values = np.array(quantities) * np.array(prices)
   total_value = current_values.sum() or 1.0

@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import math
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,7 +17,7 @@ import yfinance as yf
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import analytics, backtests, optimizers, commentary, optimizers_v2, covariance_estimation, factor_models, backtesting, quant_strategies, factor_attribution
+from . import analytics, backtests, commentary, optimizers_v2, covariance_estimation, factor_models, backtesting, quant_strategies, factor_attribution
 from .quant_engine import run_quant_backtest
 from .quant_regimes import detect_regimes
 from .quant import (
@@ -126,21 +125,44 @@ if not logger.handlers:
 
 @app.get("/api/health")
 def health_check() -> Dict[str, str]:
+    """
+    Health check endpoint for monitoring and load balancers.
+
+    Returns simple status indicator to verify API is running.
+    """
     return {"status": "ok"}
 
 # Friendly root health for infra checks
 @app.get("/health")
 def health_root() -> Dict[str, str]:
+    """
+    Root health check for infrastructure monitoring.
+
+    Alternative endpoint for platforms that expect /health without prefix.
+    """
     return {"status": "ok"}
 
 
 @app.get("/api/portfolio", response_model=List[Position])
 def get_portfolio() -> List[Position]:
+    """
+    Retrieve current portfolio positions.
+
+    Returns empty list as placeholder for future implementation.
+    """
     return []
 
 
 @app.post("/api/upload-positions", response_model=List[Position])
 async def upload_positions(file: UploadFile = File(...)) -> List[Position]:
+    """
+    Upload portfolio positions from CSV file.
+
+    Expected CSV columns: Symbol, Qty (Quantity), Cost Basis, Description.
+    Fetches current prices from yfinance and calculates P&L for each position.
+
+    Returns list of Position objects with current market values.
+    """
     content = await file.read()
     text = content.decode("utf-8")
 
@@ -165,8 +187,14 @@ async def upload_positions(file: UploadFile = File(...)) -> List[Position]:
         ticker = symbol_raw.upper()
         avg_cost = cost_basis / quantity if quantity > 0 else 0.0
 
-        quote = yf.Ticker(ticker).history(period="1d")
-        current_price = float(quote["Close"].iloc[-1]) if not quote.empty else avg_cost
+        # Fetch current price with error handling
+        try:
+            quote = yf.Ticker(ticker).history(period="1d")
+            current_price = float(quote["Close"].iloc[-1]) if not quote.empty else avg_cost
+        except Exception as exc:
+            logger.warning(f"Failed to fetch price for {ticker}: {exc}")
+            current_price = avg_cost
+
         market_value = current_price * quantity
         pnl = market_value - cost_basis
 
@@ -191,6 +219,12 @@ async def upload_positions(file: UploadFile = File(...)) -> List[Position]:
 
 @app.post("/api/portfolio-metrics", response_model=PortfolioMetricsResponse, responses={400: {"model": ApiError}})
 def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsResponse:
+    """
+    Calculate comprehensive portfolio performance metrics.
+
+    Takes tickers and weights, computes returns, volatility, Sharpe ratio, and benchmarks against SPY.
+    Returns metrics, equity curves, and AI-generated commentary.
+    """
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
     portfolio_returns = analytics.compute_portfolio_returns(prices, weights)
@@ -370,9 +404,15 @@ def _allocation_from_payload(request: PMAllocationRequest) -> PMAllocationRespon
 
 @app.post("/api/backtest", response_model=BacktestResponse, responses={400: {"model": ApiError}})
 def backtest(request: BacktestRequest, http_request: Request) -> BacktestResponse:
+    """
+    Run strategy backtest with multiple built-in strategies.
+
+    Supports buy-and-hold, SMA crossover, momentum, min-vol, and mean reversion.
+    Returns performance metrics, equity curves, benchmark comparison, and turnover analysis.
+    """
     # Rate limiting: expensive computational endpoint
     rate_limit_check(http_request, "/api/backtest", settings.rate_limit_backtest)
-    
+
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
 
@@ -470,6 +510,12 @@ def backtest(request: BacktestRequest, http_request: Request) -> BacktestRespons
 
 @app.post("/api/v1/pm/backtest", response_model=PMBacktestResponse, responses={400: {"model": ApiError}})
 def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
+    """
+    Portfolio manager backtest with advanced analytics.
+
+    Runs backtest with rebalancing and computes alpha, beta, tracking error against benchmark.
+    Returns full analytics payload including risk decomposition and diagnostics.
+    """
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     # Normalize to numpy for consistency; accept None or list input.
     weights_list = normalize_weights(request.tickers, request.weights)
@@ -537,6 +583,12 @@ def pm_backtest_demo() -> PMBacktestResponse:
 
 @app.post("/api/v2/portfolio-analytics")
 def v2_portfolio_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    V2 portfolio analytics with position-based inputs.
+
+    Takes tickers, quantities, and prices rather than weights. Computes comprehensive
+    analytics including risk, attribution, and sector analysis.
+    """
     tickers = request.get("tickers") or []
     quantities = request.get("quantities") or [1.0 for _ in tickers]
     prices = request.get("prices") or [1.0 for _ in tickers]
@@ -551,6 +603,12 @@ def v2_portfolio_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.post("/api/v2/backtest-analytics")
 def v2_backtest_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    V2 backtest analytics with flexible configuration.
+
+    Runs backtest with specified weights and rebalancing, persists results to run history.
+    Returns comprehensive analytics including rolling metrics and active returns.
+    """
     tickers = request.get("tickers") or []
     weights = request.get("weights")
     benchmark = request.get("benchmark") or "SPY"
@@ -576,13 +634,19 @@ def v2_backtest_analytics(request: Dict[str, Any]) -> Dict[str, Any]:
             meta={"label": f"{tickers}", "benchmark": benchmark},
         )
         result["run_id"] = run_id
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception("Failed to persist backtest run: %s", exc)
     return result
 
 
 @app.post("/api/v1/pm/allocation", response_model=PMAllocationResponse, responses={400: {"model": ApiError}})
 def pm_allocation(request: PMAllocationRequest) -> PMAllocationResponse:
+    """
+    Portfolio allocation analysis with drift tracking.
+
+    Compares current weights to target weights, identifies positions outside tolerance,
+    and computes turnover required for rebalancing.
+    """
     try:
         return _allocation_from_payload(request)
     except Exception as exc:
@@ -592,6 +656,12 @@ def pm_allocation(request: PMAllocationRequest) -> PMAllocationResponse:
 
 @app.post("/api/v1/quant/backtest", response_model=QuantBacktestResponse, responses={400: {"model": ApiError}})
 def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
+    """
+    Quantitative strategy backtest with trade-level analysis.
+
+    Runs strategy engine with entry/exit rules, computes trade statistics including
+    win rate, average win/loss, and risk-adjusted returns.
+    """
     payload = run_quant_backtest(request)
     summary = _pm_summary(
         pd.Series(payload["returns"], index=pd.to_datetime(payload["dates"])),
@@ -627,6 +697,12 @@ def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
 
 @app.post("/api/v1/quant/regimes", response_model=RegimeResponse, responses={400: {"model": ApiError}})
 def quant_regimes(request: RegimeRequest) -> RegimeResponse:
+    """
+    Market regime detection using Hidden Markov Models.
+
+    Identifies bull/bear market regimes based on volatility and trend patterns.
+    Returns regime labels, transition probabilities, and confidence scores.
+    """
     try:
         return detect_regimes(request)
     except Exception as exc:
@@ -636,6 +712,12 @@ def quant_regimes(request: RegimeRequest) -> RegimeResponse:
 
 @app.post("/api/v1/quant/microstructure", response_model=MicrostructureResponse, responses={400: {"model": ApiError}})
 def microstructure(request: MicrostructureRequest) -> MicrostructureResponse:
+    """
+    Market microstructure analysis for trading costs and liquidity.
+
+    Computes bid-ask spreads, price impact, volatility clustering, and execution quality metrics.
+    Useful for understanding transaction costs and optimal trade sizing.
+    """
     return compute_microstructure(request)
 
 
@@ -662,11 +744,21 @@ def _list_runs(limit: int = 20) -> List[Dict[str, Any]]:
 
 @app.get("/api/runs", response_model=List[Dict[str, Any]])
 def list_runs(limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    List recent backtest run history.
+
+    Returns most recent run metadata with timestamps and performance summaries.
+    """
     return _list_runs(limit)
 
 
 @app.get("/api/runs/latest", response_model=Dict[str, Any])
 def latest_run() -> Dict[str, Any]:
+    """
+    Get most recent backtest run.
+
+    Returns latest run details with full metrics and configuration.
+    """
     runs = _list_runs(1)
     if not runs:
         raise HTTPException(status_code=404, detail="No runs found")
@@ -675,6 +767,11 @@ def latest_run() -> Dict[str, Any]:
 
 @app.get("/api/runs/{run_id}", response_model=Dict[str, Any])
 def get_run(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve specific backtest run by ID.
+
+    Returns full run details including parameters, metrics, and time series data.
+    """
     return _load_run(run_id)
 
 
@@ -694,6 +791,12 @@ def backtest_from_config(payload: Dict[str, Any]) -> BacktestResponse:
 
 @app.post("/api/factor-exposures")
 def factor_exposures(request: FactorExposureRequest) -> Dict[str, Any]:
+    """
+    Calculate factor exposures using regression analysis.
+
+    Computes loadings to common risk factors like market, size, value, and momentum.
+    Returns factor betas and R-squared values.
+    """
     logger.info("factor_exposures: tickers=%s start=%s end=%s", request.tickers, request.start_date, request.end_date)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
@@ -704,6 +807,12 @@ def factor_exposures(request: FactorExposureRequest) -> Dict[str, Any]:
 
 @app.post("/api/risk-breakdown")
 def risk_breakdown_endpoint(request: RiskBreakdownRequest) -> Dict[str, Any]:
+    """
+    Decompose portfolio risk into individual asset contributions.
+
+    Computes marginal and component risk for each position, showing which assets
+    contribute most to portfolio volatility.
+    """
     logger.info("risk_breakdown: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
@@ -713,9 +822,15 @@ def risk_breakdown_endpoint(request: RiskBreakdownRequest) -> Dict[str, Any]:
 
 @app.post("/api/monte-carlo")
 def monte_carlo(request: MonteCarloRequest, http_request: Request) -> Dict[str, Any]:
+    """
+    Run Monte Carlo simulation for portfolio projections.
+
+    Simulates thousands of possible future paths based on historical returns and correlations.
+    Returns probability of loss, target return achievement, and distribution statistics.
+    """
     # Rate limiting: expensive Monte Carlo simulations
     rate_limit_check(http_request, "/api/monte-carlo", settings.rate_limit_optimization)
-    
+
     logger.info("monte_carlo: tickers=%s horizon=%s sims=%s", request.tickers, request.horizon_days, request.simulations)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
@@ -768,6 +883,12 @@ def efficient_frontier(request: FrontierRequest, http_request: Request) -> Dict[
 
 @app.post("/api/strategy-builder")
 def strategy_builder(request: StrategyBuilderRequest) -> Dict[str, Any]:
+    """
+    Build custom strategy with user-defined rules and risk controls.
+
+    Accepts technical indicator rules, stop loss, and take profit parameters.
+    Returns backtest results with position tracking.
+    """
     logger.info("strategy_builder: tickers=%s rules=%s", request.tickers, len(request.rules))
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     weights = normalize_weights(request.tickers, request.weights)
@@ -804,6 +925,12 @@ def strategy_builder(request: StrategyBuilderRequest) -> Dict[str, Any]:
 
 @app.post("/api/stress-test")
 def stress_test(request: StressTestRequest) -> Dict[str, Any]:
+    """
+    Stress test portfolio against historical crises.
+
+    Simulates portfolio behavior during dotcom crash, GFC, COVID, and custom shocks.
+    Returns peak-to-trough drawdown and scenario-specific metrics.
+    """
     logger.info("stress_test: tickers=%s scenario=%s", request.tickers, request.scenario)
     weights = normalize_weights(request.tickers, request.weights)
     periods = {
@@ -844,6 +971,12 @@ def stress_test(request: StressTestRequest) -> Dict[str, Any]:
 
 @app.post("/api/benchmark")
 def benchmark(request: BenchmarkRequest) -> Dict[str, Any]:
+    """
+    Compare portfolio performance against benchmark.
+
+    Computes relative returns, rolling alpha/beta, and Brinson attribution
+    (allocation vs selection effects).
+    """
     logger.info("benchmark: tickers=%s benchmark=%s", request.tickers, request.benchmark)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     bench_prices = fetch_price_history([request.benchmark], request.start_date, request.end_date)
@@ -858,12 +991,22 @@ def benchmark(request: BenchmarkRequest) -> Dict[str, Any]:
 
 @app.get("/api/presets")
 def list_presets() -> Dict[str, Any]:
+    """
+    List saved portfolio presets.
+
+    Returns user-defined portfolio configurations with tickers and weights.
+    """
     from .infra.utils import load_presets
     return load_presets()
 
 
 @app.post("/api/presets")
 def save_preset(request: SavePresetRequest) -> Dict[str, Any]:
+    """
+    Save portfolio configuration as preset.
+
+    Stores tickers and weights for quick access in future sessions.
+    """
     from .infra.utils import load_presets, save_presets
     presets = load_presets()
     presets[request.name] = {"tickers": request.tickers, "weights": request.weights}
@@ -873,6 +1016,11 @@ def save_preset(request: SavePresetRequest) -> Dict[str, Any]:
 
 @app.delete("/api/presets/{name}")
 def delete_preset(name: str) -> Dict[str, Any]:
+    """
+    Delete saved portfolio preset.
+
+    Removes preset by name and returns updated preset list.
+    """
     from .infra.utils import load_presets, save_presets
     presets = load_presets()
     if name in presets:
@@ -883,6 +1031,11 @@ def delete_preset(name: str) -> Dict[str, Any]:
 
 @app.post("/api/export/json")
 def export_json(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Export data as JSON.
+
+    Returns input payload unchanged, useful for triggering browser downloads.
+    """
     return payload
 
 
@@ -890,46 +1043,91 @@ def export_json(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.post("/api/analytics/metrics", response_model=PortfolioMetricsResponse, responses={400: {"model": ApiError}})
 def analytics_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsResponse:
+    """
+    Aliased endpoint for portfolio metrics.
+
+    Forwards to /api/portfolio-metrics for consistency.
+    """
     return portfolio_metrics(request)
 
 
 @app.post("/api/analytics/factors", responses={400: {"model": ApiError}})
 def analytics_factors(request: FactorExposureRequest) -> Dict[str, Any]:
+    """
+    Aliased endpoint for factor exposures.
+
+    Forwards to /api/factor-exposures for consistency.
+    """
     return factor_exposures(request)
 
 
 @app.post("/api/analytics/risk", responses={400: {"model": ApiError}})
 def analytics_risk(request: RiskBreakdownRequest) -> Dict[str, Any]:
+    """
+    Aliased endpoint for risk breakdown.
+
+    Forwards to /api/risk-breakdown for consistency.
+    """
     return risk_breakdown_endpoint(request)
 
 
 @app.post("/api/backtests/run", response_model=BacktestResponse, responses={400: {"model": ApiError}})
 def backtests_run(request: BacktestRequest) -> BacktestResponse:
+    """
+    Aliased endpoint for backtests.
+
+    Forwards to /api/backtest for consistency.
+    """
     return backtest(request)
 
 
 @app.post("/api/backtests/config", response_model=BacktestResponse, responses={400: {"model": ApiError}})
 def backtests_config(payload: Dict[str, Any]) -> BacktestResponse:
+    """
+    Aliased endpoint for config-based backtests.
+
+    Forwards to /api/backtest-config for consistency.
+    """
     return backtest_from_config(payload)
 
 
 @app.post("/api/optimizers/frontier", responses={400: {"model": ApiError}})
 def optimizers_frontier(request: FrontierRequest) -> Dict[str, Any]:
+    """
+    Aliased endpoint for efficient frontier.
+
+    Forwards to /api/efficient-frontier for consistency.
+    """
     return efficient_frontier(request)
 
 
 @app.post("/api/rebalance/position-sizing", response_model=PositionSizingResponse, responses={400: {"model": ApiError}})
 def rebalance_position_sizing(request: PositionSizingRequest) -> Dict[str, Any]:
+    """
+    Aliased endpoint for position sizing.
+
+    Forwards to /api/position-sizing for consistency.
+    """
     return position_sizing_endpoint(request)
 
 
 @app.post("/api/rebalance/trades", response_model=RebalanceResponse, responses={400: {"model": ApiError}})
 def rebalance_trades(request: RebalanceRequest) -> Dict[str, Any]:
+    """
+    Aliased endpoint for rebalance trade generation.
+
+    Forwards to /api/rebalance for consistency.
+    """
     return rebalance_endpoint(request)
 
 
 @app.post("/api/dashboard", response_model=DashboardResponse, responses={400: {"model": ApiError}})
 def dashboard_summary(request: DashboardRequest) -> DashboardResponse:
+    """
+    Aliased endpoint for portfolio dashboard.
+
+    Forwards to /api/portfolio-dashboard for consistency.
+    """
     return portfolio_dashboard_endpoint(request)
 
 @app.post("/api/position-sizing", response_model=PositionSizingResponse, responses={400: {"model": ApiError}})
@@ -986,7 +1184,7 @@ def portfolio_dashboard_endpoint(request: DashboardRequest) -> DashboardResponse
 
 
 @app.post("/api/covariance-analysis")
-def covariance_analysis(request: PortfolioMetricsRequest) -> Dict[str, Any]:
+def covariance_analysis(request: PortfolioMetricsRequest, http_request: Request) -> Dict[str, Any]:
     """
     Compare different covariance estimators for robustness analysis.
 
@@ -998,6 +1196,7 @@ def covariance_analysis(request: PortfolioMetricsRequest) -> Dict[str, Any]:
 
     Useful for understanding estimation quality and choosing the right method.
     """
+    rate_limit_check(http_request, "/api/covariance-analysis", settings.rate_limit_optimization)
     logger.info("covariance_analysis: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     rets = prices.pct_change().dropna()
@@ -1020,7 +1219,7 @@ def covariance_analysis(request: PortfolioMetricsRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/factor-attribution")
-def factor_attribution(request: PortfolioMetricsRequest) -> Dict[str, Any]:
+def factor_attribution(request: PortfolioMetricsRequest, http_request: Request) -> Dict[str, Any]:
     """
     Fama-French 5-factor model attribution for portfolio or asset.
 
@@ -1034,6 +1233,7 @@ def factor_attribution(request: PortfolioMetricsRequest) -> Dict[str, Any]:
 
     Returns factor loadings, R², and variance decomposition.
     """
+    rate_limit_check(http_request, "/api/factor-attribution", settings.rate_limit_optimization)
     logger.info("factor_attribution: tickers=%s", request.tickers)
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
     rets = prices.pct_change().dropna()
@@ -1380,10 +1580,10 @@ def factor_attribution_v2(request: PortfolioMetricsRequest) -> Dict[str, Any]:
 @app.post("/api/quant/pairs-trading")
 def pairs_trading(request: PairsTradingRequest) -> Dict[str, Any]:
     """
-    Run pairs trading backtest with cointegration testing.
+    Pairs trading backtest with cointegration analysis.
 
-    Tests cointegration between two assets and generates trading signals
-    based on z-score of the spread.
+    Tests statistical relationship between two assets and trades mean reversion of the spread.
+    Returns cointegration test results, trade history, and performance metrics.
     """
     logger.info("pairs_trading: %s vs %s", request.ticker1, request.ticker2)
 
@@ -1409,10 +1609,10 @@ def pairs_trading(request: PairsTradingRequest) -> Dict[str, Any]:
 @app.post("/api/quant/garch-vol-targeting")
 def garch_vol_targeting(request: GARCHRequest) -> Dict[str, Any]:
     """
-    GARCH(1,1) volatility targeting strategy.
+    Dynamic position sizing using GARCH volatility forecasts.
 
-    Fits GARCH model to forecast volatility and dynamically sizes positions
-    to achieve target volatility.
+    Fits GARCH(1,1) model to predict next-period volatility and scales positions
+    to maintain constant risk exposure.
     """
     logger.info("garch_vol_targeting: %s target_vol=%s", request.ticker, request.target_vol)
 
@@ -1429,13 +1629,14 @@ def garch_vol_targeting(request: GARCHRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/quant/walk-forward")
-def walk_forward(request: WalkForwardRequest) -> Dict[str, Any]:
+def walk_forward(request: WalkForwardRequest, http_request: Request) -> Dict[str, Any]:
     """
-    Walk-forward optimization with out-of-sample validation.
+    Rolling optimization with out-of-sample testing.
 
-    Optimizes portfolio on rolling training windows and applies weights
-    to out-of-sample testing periods.
+    Trains on historical window, applies to future period, then rolls forward.
+    Prevents lookahead bias and provides realistic performance estimates.
     """
+    rate_limit_check(http_request, "/api/quant/walk-forward", settings.rate_limit_optimization)
     logger.info("walk_forward: %s assets, method=%s", len(request.tickers), request.method)
 
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
@@ -1454,7 +1655,10 @@ def walk_forward(request: WalkForwardRequest) -> Dict[str, Any]:
 @app.post("/api/quant/momentum")
 def momentum(request: MomentumRequest) -> Dict[str, Any]:
     """
-    Dual momentum strategy: rank assets by past returns, hold top N.
+    Momentum strategy with periodic rebalancing.
+
+    Ranks assets by past performance and holds top performers for specified period.
+    Returns backtest with turnover and concentration metrics.
     """
     logger.info("momentum: %s assets, top_n=%s", len(request.tickers), request.top_n)
 
@@ -1474,10 +1678,10 @@ def momentum(request: MomentumRequest) -> Dict[str, Any]:
 @app.post("/api/quant/var-cvar")
 def var_cvar(request: VaRRequest) -> Dict[str, Any]:
     """
-    Compute Value at Risk (VaR) and Conditional VaR (CVaR).
+    Calculate Value at Risk and Expected Shortfall.
 
-    Methods: historical, parametric, cornish_fisher
-    Distributions: normal, t
+    Supports historical simulation, parametric normal/t-distribution, and Cornish-Fisher expansion.
+    Returns VaR and CVaR at specified confidence level.
     """
     logger.info("var_cvar: %s method=%s", request.ticker, request.method)
 
@@ -1495,12 +1699,14 @@ def var_cvar(request: VaRRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/quant/stress-test")
-def stress_test(request: StressTestRequest) -> Dict[str, Any]:
+def stress_test_quant(request: StressTestRequest, http_request: Request) -> Dict[str, Any]:
     """
-    Stress test portfolio using historical crisis scenarios.
+    Evaluate portfolio under extreme market conditions.
 
-    Scenarios: 2008 GFC, 2020 COVID, 2022 Rate Hikes
+    Tests against 2008 GFC, 2020 COVID, and 2022 rate hikes.
+    Returns drawdown, recovery time, and stress loss estimates.
     """
+    rate_limit_check(http_request, "/api/quant/stress-test", settings.rate_limit_optimization)
     logger.info("stress_test: %s value=%s", request.ticker, request.current_value)
 
     prices = fetch_price_history([request.ticker], request.start_date, request.end_date).iloc[:, 0]
@@ -1516,12 +1722,14 @@ def stress_test(request: StressTestRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/quant/pca")
-def pca(request: PCARequest) -> Dict[str, Any]:
+def pca(request: PCARequest, http_request: Request) -> Dict[str, Any]:
     """
-    Principal Component Analysis for factor decomposition.
+    Dimensionality reduction and factor identification via PCA.
 
-    Returns eigenvalues, loadings, and explained variance.
+    Extracts principal components from return covariance matrix.
+    Returns loadings, explained variance, and factor interpretations.
     """
+    rate_limit_check(http_request, "/api/quant/pca", settings.rate_limit_optimization)
     logger.info("pca: %s assets, n_components=%s", len(request.tickers), request.n_components)
 
     prices = fetch_price_history(request.tickers, request.start_date, request.end_date)
@@ -1538,7 +1746,10 @@ def pca(request: PCARequest) -> Dict[str, Any]:
 @app.post("/api/quant/tail-risk")
 def tail_risk(request: TailRiskRequest) -> Dict[str, Any]:
     """
-    Compute tail risk metrics: max drawdown, Calmar, Omega, Sortino.
+    Analyze downside risk and extreme loss characteristics.
+
+    Computes max drawdown, Calmar ratio, Omega ratio, Sortino ratio, and skewness/kurtosis.
+    Focuses on left-tail behavior rather than symmetric volatility.
     """
     logger.info("tail_risk: %s", request.ticker)
 
@@ -1566,7 +1777,10 @@ def tail_risk(request: TailRiskRequest) -> Dict[str, Any]:
 @app.post("/api/quant/live-positions")
 def get_live_positions_api(request: LivePositionsRequest) -> Dict[str, Any]:
     """
-    Get real-time position tracking with live P&L.
+    Fetch current positions with real-time valuations.
+
+    Retrieves latest prices and computes unrealized gains/losses for each position.
+    Returns total portfolio value and individual P&L breakdown.
     """
     logger.info("live_positions: %s positions", len(request.tickers))
 
@@ -1582,9 +1796,10 @@ def get_live_positions_api(request: LivePositionsRequest) -> Dict[str, Any]:
 @app.post("/api/quant/generate-orders")
 def generate_orders(request: RebalanceOrdersRequest) -> Dict[str, Any]:
     """
-    Generate rebalance orders to achieve target weights.
+    Create trade orders to rebalance to target allocation.
 
-    Returns CSV-ready order list.
+    Compares current positions to target weights and generates buy/sell orders.
+    Returns order list with ticker, action, and quantity.
     """
     logger.info("generate_orders: %s positions", len(request.current_tickers))
 
@@ -1602,7 +1817,10 @@ def generate_orders(request: RebalanceOrdersRequest) -> Dict[str, Any]:
 @app.post("/api/quant/risk-limits")
 def risk_limits(request: RiskLimitsRequest) -> Dict[str, Any]:
     """
-    Monitor portfolio for risk limit breaches.
+    Check portfolio against predefined risk constraints.
+
+    Evaluates position size, concentration, VaR, and drawdown limits.
+    Returns breach alerts and compliance status.
     """
     logger.info("risk_limits: %s", request.ticker)
 

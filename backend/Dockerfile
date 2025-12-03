@@ -1,25 +1,26 @@
 FROM python:3.13-slim AS runtime
 
+# Prevent Python from writing .pyc files and buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# System deps for building wheels if needed
+# Install system dependencies required for building Python packages
+# curl added for health checks
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first to maximize cache usage
+# Copy and install Python dependencies first for better layer caching
 COPY requirements.txt .
-# Upgrade pip for better network resilience and install with sensible retries/timeouts
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --retries 5 --timeout 120 -r requirements.txt
 
-# Copy backend source
+# Copy application source code
 COPY . .
 
 EXPOSE 8000
 
-# Start FastAPI with Uvicorn (production mode, no reload)
+# Start FastAPI with Uvicorn in production mode
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

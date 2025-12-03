@@ -167,7 +167,8 @@ def generate_rebalance_orders(
             # Fetch price for new ticker
             try:
                 price = yf.Ticker(ticker).info.get("currentPrice", 100)
-            except:
+            except Exception:
+                # Fallback to default price if yfinance fails
                 price = 100
 
             target_value = total_value * target_weight

@@ -1,4 +1,7 @@
 services:
+  # PostgreSQL database - currently unused by application
+  # Application uses file-based storage for runs and presets
+  # Uncomment depends_on in backend service when DB integration is implemented
   db:
     image: postgres:16-alpine
     container_name: portfolio-db
@@ -10,12 +13,17 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     container_name: portfolio-backend
     environment:
-      # Override with ./backend/.env if present
+      # Database URL (not currently used by application)
       DATABASE_URL: postgres://portfolio:portfolio@db:5432/portfolio
       # Rate limiting configuration
       RATE_LIMIT_BACKTEST: "10"
@@ -25,27 +33,41 @@ services:
       ENVIRONMENT: "development"
     env_file:
       - ./backend/.env
-    depends_on:
-      - db
+    # Database dependency commented until application integrates with DB
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build:
       context: ./client
       args:
-        # For Docker Compose: backend service name is 'backend'
+        # Build-time API URL for Docker Compose networking
         VITE_API_BASE_URL: http://backend:8000
     container_name: portfolio-frontend
     environment:
-      # Override with ./client/.env if present
+      # Runtime API URL exposed to browser
       VITE_API_BASE_URL: http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "4173:80"
     env_file:
       - ./client/.env.docker
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   db-data:
