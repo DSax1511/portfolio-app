@@ -13,14 +13,36 @@ import yfinance as yf
 from fastapi import HTTPException
 
 from .config import settings
-from .errors import ErrorCode
+from .core.errors import ErrorCode
 from .infra.utils import parse_date
 
 logger = logging.getLogger(__name__)
 
-# Rate limiting semaphore: limit concurrent yfinance requests to avoid overwhelming the API
-# On Render, multiple concurrent requests can trigger rate limits; this serializes them slightly
-_yf_semaphore = asyncio.Semaphore(2)
+# Global semaphore for rate limiting - will be created lazily per event loop
+_yf_semaphore: Optional[asyncio.Semaphore] = None
+_semaphore_lock = asyncio.Lock() if asyncio._get_running_loop() is None else None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """
+    Get or create a semaphore for the current event loop.
+
+    This ensures the semaphore is always bound to the correct event loop,
+    preventing "bound to a different event loop" errors.
+    """
+    global _yf_semaphore
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop, create a new semaphore
+        _yf_semaphore = asyncio.Semaphore(3)
+        return _yf_semaphore
+
+    # Check if semaphore exists and is bound to current loop
+    if _yf_semaphore is None or _yf_semaphore._loop != loop:
+        _yf_semaphore = asyncio.Semaphore(3)
+
+    return _yf_semaphore
 
 
 def _cache_path(ticker: str) -> Path:
@@ -32,22 +54,23 @@ def _fetch_from_yf_sync(
     start: dt.date,
     end: Optional[dt.date],
     max_retries: int = 5,
-    base_delay: float = 2.0
+    base_delay: float = 3.0
 ) -> Tuple[pd.Series, bool]:
     """
     Synchronous yfinance fetch with exponential backoff retry logic.
 
-    Enhanced for Render environment:
-    - Increased max_retries to 5 (from 3) for better reliability
-    - Increased base_delay to 2.0s (from 1.0s) for rate limit recovery
-    - Longer exponential backoff: 2s, 4s, 8s, 16s, 32s
+    Enhanced for production environment:
+    - max_retries: 5 attempts for better reliability
+    - base_delay: 3.0s to respect rate limits
+    - Exponential backoff: 3s, 6s, 12s, 24s, 48s
+    - Detects and handles Yahoo Finance rate limit errors
 
     Args:
         ticker: Stock ticker symbol
         start: Start date for historical data
         end: End date for historical data
         max_retries: Maximum number of retry attempts (default: 5)
-        base_delay: Base delay in seconds for exponential backoff (default: 2.0)
+        base_delay: Base delay in seconds for exponential backoff (default: 3.0)
 
     Returns:
         Tuple of (pandas Series with price data, is_network_error)
@@ -69,7 +92,7 @@ def _fetch_from_yf_sync(
             )
             if data.empty:
                 logger.warning(f"No data returned for {ticker} - ticker may not exist or have no history")
-                return pd.Series(dtype=float), False  # Not a network error, just no data
+                return pd.Series(dtype=float), False
 
             # Extract Close prices
             if isinstance(data.columns, pd.MultiIndex):
@@ -82,42 +105,59 @@ def _fetch_from_yf_sync(
 
         except Exception as e:
             last_exception = e
-            # Check if this is a network/connection error
-            is_network = any(
-                err_type in str(type(e).__name__)
-                for err_type in ["ConnectionError", "Timeout", "HTTPError", "URLError"]
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+
+            # Detect rate limiting
+            is_rate_limit = (
+                "rate limit" in error_str
+                or "too many requests" in error_str
+                or "429" in error_str
+                or "YFRateLimitError" in error_type
             )
 
+            # Detect network errors
+            is_network = any(
+                err_type in error_type
+                for err_type in ["ConnectionError", "Timeout", "HTTPError", "URLError"]
+            ) or is_rate_limit
+
             if attempt < max_retries - 1:
-                # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-                delay = base_delay * (2 ** attempt)
-                logger.warning(
-                    f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): "
-                    f"{type(e).__name__}: {e}. Retrying in {delay}s..."
-                )
+                # Longer delay for rate limits
+                if is_rate_limit:
+                    delay = base_delay * (2 ** (attempt + 1))  # 6s, 12s, 24s, 48s
+                    logger.warning(
+                        f"Rate limited on {ticker} (attempt {attempt + 1}/{max_retries}). "
+                        f"Waiting {delay}s before retry..."
+                    )
+                else:
+                    delay = base_delay * (2 ** attempt)  # 3s, 6s, 12s, 24s
+                    logger.warning(
+                        f"Failed to fetch {ticker} (attempt {attempt + 1}/{max_retries}): "
+                        f"{error_type}: {e}. Retrying in {delay}s..."
+                    )
                 time.sleep(delay)
             else:
                 logger.error(
                     f"Failed to fetch {ticker} after {max_retries} attempts. "
-                    f"Last error: {type(e).__name__}: {e}"
+                    f"Last error: {error_type}: {e}"
                 )
-                # If we exhausted retries and had network errors, mark as network issue
                 return pd.Series(dtype=float), is_network
 
-    # Shouldn't reach here, but return network error if we did
     return pd.Series(dtype=float), True
 
 
 async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> Tuple[pd.Series, bool]:
     """
     Async wrapper with rate-limiting semaphore to prevent overwhelming yfinance.
-    Limits concurrent requests to 2 at a time on Render.
+    Limits concurrent requests to 3 at a time to avoid rate limits.
 
     Returns:
         Tuple of (price series, is_network_error)
     """
-    async with _yf_semaphore:
-        loop = asyncio.get_event_loop()
+    semaphore = _get_semaphore()
+    async with semaphore:
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
 
 
@@ -253,8 +293,8 @@ async def _fetch_single_ticker_async(
 
         try:
             fetched, is_network_error = await _fetch_from_yf_async(ticker, start_date, end_date)
-            # Add small delay between requests to be nice to Yahoo Finance
-            await asyncio.sleep(0.5)
+            # Add delay between requests to avoid rate limiting
+            await asyncio.sleep(1.0)
         except Exception as e:
             logger.error(f"Unexpected error fetching {ticker}: {e}")
             is_network_error = True
@@ -279,10 +319,10 @@ async def _fetch_single_ticker_async(
 def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[str]) -> pd.DataFrame:
     """
     Fetch daily close prices for tickers using yfinance with concurrent async fetching.
-    
+
     Performance: Fetches all tickers in parallel, ~5x faster than sequential.
     Cache hits are instant; cache misses use thread-executor for non-blocking I/O.
-    
+
     If start is None, defaults to a rolling lookback defined in settings.
     """
     start_date = parse_date(start)
@@ -291,7 +331,41 @@ def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[
     if start_date is None:
         start_date = dt.date.today() - dt.timedelta(days=365 * settings.default_lookback_years)
 
-    # Run concurrent async fetches
+    # Check if we're already in an async context
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context, create new thread to avoid blocking
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_fetch_sync_wrapper, tickers, start_date, end_date)
+            frames = future.result()
+    except RuntimeError:
+        # No running loop, safe to create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            tasks = [
+                _fetch_single_ticker_async(ticker, start_date, end_date)
+                for ticker in tickers
+            ]
+            results = loop.run_until_complete(asyncio.gather(*tasks))
+            frames = [series for _, series in results]
+        finally:
+            loop.close()
+
+    closes = pd.concat(frames, axis=1).sort_index()
+    closes = closes.ffill().bfill()
+
+    if closes.empty:
+        raise HTTPException(status_code=400, detail="No price data found for the requested tickers/dates.")
+    return closes
+
+
+def _fetch_sync_wrapper(tickers: List[str], start_date: dt.date, end_date: Optional[dt.date]) -> List[pd.Series]:
+    """
+    Synchronous wrapper for fetch operations when called from async context.
+    Creates a new event loop in a separate thread.
+    """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -300,16 +374,9 @@ def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[
             for ticker in tickers
         ]
         results = loop.run_until_complete(asyncio.gather(*tasks))
+        return [series for _, series in results]
     finally:
         loop.close()
-
-    frames = [series for _, series in results]
-    closes = pd.concat(frames, axis=1).sort_index()
-    closes = closes.ffill().bfill()
-    
-    if closes.empty:
-        raise HTTPException(status_code=400, detail="No price data found for the requested tickers/dates.")
-    return closes
 
 
 def get_factor_proxies() -> Dict[str, str]:
