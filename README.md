@@ -4,9 +4,6 @@ A modern React + FastAPI quantitative analytics platform for portfolio analysis,
 
 Built with a feature-based architecture, production-grade engineering patterns, and ready for local dev, Docker Compose, or cloud deployment (Vercel / Render).
 
-![Portfolio dashboard](docs/screenshots/dashboard.png)
-![Strategy research](docs/screenshots/strategy_research.png)
-
 🚀 Features
 Frontend — /client
 
@@ -146,8 +143,6 @@ Vitest + React Testing Library (when enabled)
 - `docs/saxtonpi_overview.md`: covers Saxton PI’s problems (portfolio analysis, risk stats, tax harvest, backtesting), walks through the realistic SMA/RSI strategy (signal-on-close, trade-next-open, integer shares, slippage, commission), and links to the annotated strategy screenshot.  
 - `docs/design_decisions.md`: production notes on the FastAPI + React choice, feature-based frontend structure, CORS/env var handling, known limitations, and future extensions.  
 - `docs/architecture.svg`: visual overview of Frontend → FastAPI → Analytics Engine → Data/Cache plus the detailed backtest pipeline (data → signals → trades → equity → metrics).  
-- `docs/screenshots/dashboard.png`, `strategy_research.png`, and `tax_harvest.png`: quick hero + analytics screenshots to show what the platform looks like in action.
-
 ## Sample data & demo setups
 
 - `sample_data/spy_sample.csv`: trimmed SPY history for offline demos or notebook playback.  
