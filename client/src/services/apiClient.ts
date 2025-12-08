@@ -45,7 +45,6 @@ const resolveApiBase = () => {
 };
 
 export const apiBaseUrl = resolveApiBase();
-export { resolveApiBase };
 
 export class ApiClientError extends Error {
   status?: number;
