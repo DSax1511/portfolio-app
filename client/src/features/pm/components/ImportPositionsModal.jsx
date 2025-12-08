@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { portfolioApi } from "../../../services/portfolioApi";
 
 const Icon = ({ children, size = 18 }) => (
@@ -17,61 +17,225 @@ const Icon = ({ children, size = 18 }) => (
   </svg>
 );
 
-/**
- * ImportPositionsModal - Modal for importing positions via file upload or manual entry
- * Follows global viewport-safe overlay standards:
- * - Stays fully within screen boundaries
- * - Uses internal scrolling for long content
- * - Fixed header and footer, scrollable body
- * - Maximum 600-700px width, 80-85vh height
- */
+const createDraftPosition = (overrides = {}) => ({
+  ticker: "",
+  quantity: "",
+  costBasis: "",
+  currency: "USD",
+  portfolio: "",
+  asOf: "",
+  ...overrides,
+});
+
+const HEADER_FIELD_MAP = {
+  ticker: "ticker",
+  symbol: "ticker",
+  quantity: "quantity",
+  qty_quantity: "quantity",
+  qty: "quantity",
+  quantity_shares: "quantity",
+  cost: "costBasis",
+  cost_basis: "costBasis",
+  costbasis: "costBasis",
+  currency: "currency",
+  curr: "currency",
+  portfolio: "portfolio",
+  account: "portfolio",
+  as_of: "asOf",
+  asof: "asOf",
+  date: "asOf",
+  trade_date: "asOf",
+};
+
+const normalizeHeader = (value = "") =>
+  value
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9\s_]/g, "")
+    .trim()
+    .replace(/[\s-]+/g, "_");
+
+const splitCsvLine = (line) => {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current);
+  return cells;
+};
+
+const isDraftRowPopulated = (row) => {
+  return Boolean(
+    (row.ticker || "").trim() ||
+      (row.quantity || "").toString().trim() ||
+      (row.costBasis || "").toString().trim() ||
+      (row.portfolio || "").trim() ||
+      (row.asOf || "").trim()
+  );
+};
+
+const parseCsvToDraftPositions = (text) => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length !== 0) {
+    const [headerLine, ...dataLines] = lines;
+    const headerCells = splitCsvLine(headerLine);
+    const headerFields = headerCells.map((cell) => HEADER_FIELD_MAP[normalizeHeader(cell)] || null);
+
+    if (!headerFields.includes("ticker")) {
+      throw new Error("The file must include a ticker or symbol column.");
+    }
+
+    const parsed = [];
+
+    dataLines.forEach((line) => {
+      const values = splitCsvLine(line);
+      const draft = createDraftPosition();
+
+      values.forEach((value, index) => {
+        const field = headerFields[index];
+        const trimmed = (value || "").trim();
+        if (!field || !trimmed) {
+          return;
+        }
+
+        if (field === "ticker") {
+          draft.ticker = trimmed.toUpperCase();
+        } else if (field === "quantity") {
+          draft.quantity = trimmed;
+        } else if (field === "costBasis") {
+          draft.costBasis = trimmed;
+        } else if (field === "currency") {
+          draft.currency = trimmed || "USD";
+        } else if (field === "portfolio") {
+          draft.portfolio = trimmed;
+        } else if (field === "asOf") {
+          draft.asOf = trimmed;
+        }
+      });
+
+      if (isDraftRowPopulated(draft)) {
+        parsed.push(draft);
+      }
+    });
+
+    return parsed;
+  }
+
+  return [];
+};
+
+const escapeCsvValue = (value) => {
+  const stringValue = value !== undefined && value !== null ? String(value) : "";
+  if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const buildCsvFromDraftRows = (rows) => {
+  const header = ["Symbol", "Qty (Quantity)", "Cost Basis", "Description"];
+  const lines = rows.map((row) =>
+    [
+      escapeCsvValue(row.ticker),
+      escapeCsvValue(row.quantity),
+      escapeCsvValue(row.costBasis ?? ""),
+      escapeCsvValue(row.portfolio ?? ""),
+    ].join(",")
+  );
+
+  return [header.join(","), ...lines].join("\n");
+};
+
+const readFileAsText = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result?.toString() || "");
+    };
+    reader.onerror = () => reject(new Error("Unable to read the file."));
+    reader.readAsText(file);
+  });
+
+const getFileExtension = (fileName = "") => {
+  const parts = fileName.split(".");
+  return parts.length > 1 ? parts.pop().toLowerCase() : "";
+};
+
 const ImportPositionsModal = ({ isOpen, onClose, onImportSuccess }) => {
-  const [activeTab, setActiveTab] = useState("file"); // "file" or "manual"
-  const [showFormatHelp, setShowFormatHelp] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadErrors, setUploadErrors] = useState([]);
-  const [manualRows, setManualRows] = useState([
-    { ticker: "", quantity: "", costBasis: "", currency: "USD" },
-  ]);
+  const [activeTab, setActiveTab] = useState("file");
+  const [draftPositions, setDraftPositions] = useState([createDraftPosition()]);
   const [manualErrors, setManualErrors] = useState({});
+  const [uploadErrors, setUploadErrors] = useState([]);
+  const [processingFile, setProcessingFile] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [showFormatHelp, setShowFormatHelp] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDraftPositions([createDraftPosition()]);
+      setManualErrors({});
+      setUploadErrors([]);
+      setActiveTab("file");
+      setDragActive(false);
+      setProcessingFile(false);
+      setImporting(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Handle file upload via drag-and-drop or file picker
   const handleFileUpload = async (file) => {
     if (!file) return;
 
-    setUploading(true);
+    const ext = getFileExtension(file.name);
+    if (ext && ext !== "csv") {
+      setUploadErrors([
+        "Only CSV files are supported in this flow. Please export your workbook as CSV and retry.",
+      ]);
+      return;
+    }
+
+    setProcessingFile(true);
     setUploadErrors([]);
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const positions = await portfolioApi.uploadPositions(formData);
-      const summary = {
-        positionsCount: positions.length,
-        uniqueTickers: [...new Set(positions.map((p) => p.ticker))].length,
-        benchmark: "SPY",
-      };
-      // Pass the positions data along with the summary
-      onImportSuccess(summary, positions);
-      onClose();
-    } catch (err) {
-      console.error("File upload error:", err);
-      // Parse error message for row-specific errors
-      const errorMsg = err.message || "Upload failed";
-      if (errorMsg.includes("Row")) {
-        // Try to extract row-level errors
-        const errors = errorMsg.split("\n").filter((line) => line.trim());
-        setUploadErrors(errors);
-      } else {
-        setUploadErrors([errorMsg]);
+      const text = await readFileAsText(file);
+      const parsed = parseCsvToDraftPositions(text);
+      if (parsed.length === 0) {
+        throw new Error("No recognizable rows found. Ensure the first row contains headers and subsequent rows contain data.");
       }
+      setDraftPositions(parsed);
+      setManualErrors({});
+      setActiveTab("manual");
+    } catch (err) {
+      const message = err?.message || "Unable to parse the uploaded file.";
+      setUploadErrors([message]);
     } finally {
-      setUploading(false);
+      setProcessingFile(false);
     }
   };
 
@@ -100,104 +264,145 @@ const ImportPositionsModal = ({ isOpen, onClose, onImportSuccess }) => {
     }
   };
 
-  // Manual entry handlers
   const addManualRow = () => {
-    setManualRows([
-      ...manualRows,
-      { ticker: "", quantity: "", costBasis: "", currency: "USD" },
-    ]);
+    setDraftPositions((prev) => [...prev, createDraftPosition()]);
   };
 
-  const updateManualRow = (index, field, value) => {
-    const updated = [...manualRows];
-    updated[index][field] = value;
-    setManualRows(updated);
-    // Clear error for this field
+  const updateDraftRow = (index, field, value) => {
+    setDraftPositions((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
     const errorKey = `${index}-${field}`;
-    if (manualErrors[errorKey]) {
-      const { [errorKey]: removed, ...rest } = manualErrors;
-      setManualErrors(rest);
-    }
+    setManualErrors((prev) => {
+      if (!prev[errorKey]) return prev;
+      const { [errorKey]: removed, ...rest } = prev;
+      return rest;
+    });
   };
 
   const removeManualRow = (index) => {
-    if (manualRows.length > 1) {
-      setManualRows(manualRows.filter((_, i) => i !== index));
-    }
+    setDraftPositions((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+    setManualErrors({});
   };
 
-  const validateManualEntry = () => {
+  const validateDraftPositions = (positions) => {
     const errors = {};
     const validRows = [];
 
-    manualRows.forEach((row, index) => {
-      // Skip completely empty rows
-      if (!row.ticker && !row.quantity && !row.costBasis) {
-        return;
-      }
+    positions.forEach((row, index) => {
+      const ticker = (row.ticker || "").trim().toUpperCase();
+      const quantityRaw = row.quantity;
+      const quantity = Number(quantityRaw);
 
-      // Validate ticker
-      if (!row.ticker || row.ticker.trim() === "") {
+      if (!ticker) {
         errors[`${index}-ticker`] = "Ticker required";
       }
 
-      // Validate quantity
-      const qty = parseFloat(row.quantity);
-      if (!row.quantity || isNaN(qty) || qty === 0) {
+      if (
+        quantityRaw === "" ||
+        quantityRaw === null ||
+        quantityRaw === undefined ||
+        Number.isNaN(quantity) ||
+        quantity === 0
+      ) {
         errors[`${index}-quantity`] = "Valid quantity required";
       }
 
-      // Cost basis is optional, but if provided, must be valid
-      if (row.costBasis && isNaN(parseFloat(row.costBasis))) {
+      if (row.costBasis && Number.isNaN(Number(row.costBasis))) {
         errors[`${index}-costBasis`] = "Invalid cost basis";
       }
 
-      // If no errors for this row, it's valid
-      const rowErrors = Object.keys(errors).filter((key) =>
-        key.startsWith(`${index}-`)
-      );
-      if (rowErrors.length === 0 && row.ticker) {
+      if (!errors[`${index}-ticker`] && !errors[`${index}-quantity`]) {
         validRows.push({
-          ticker: row.ticker.toUpperCase(),
-          quantity: parseFloat(row.quantity),
-          costBasis: row.costBasis ? parseFloat(row.costBasis) : null,
+          ticker,
+          quantity,
+          costBasis: row.costBasis ? Number(row.costBasis) : undefined,
           currency: row.currency || "USD",
+          portfolio: row.portfolio || "",
+          asOf: row.asOf || "",
         });
       }
     });
 
-    setManualErrors(errors);
-    return { valid: Object.keys(errors).length === 0, validRows };
+    return { valid: validRows.length > 0 && Object.keys(errors).length === 0, errors, validRows };
   };
 
-  const handleManualImport = () => {
-    const { valid, validRows } = validateManualEntry();
+  const handleImport = async () => {
+    setUploadErrors([]);
+    const { valid, errors, validRows } = validateDraftPositions(draftPositions);
 
-    if (!valid || validRows.length === 0) {
+    if (!valid) {
+      setManualErrors(errors);
+      setActiveTab("manual");
+      if (validRows.length === 0) {
+        setUploadErrors(["Provide at least one row with a ticker and quantity to import."]);
+      }
       return;
     }
 
-    // For now, we'll convert manual entries to the format expected by the backend
-    // In a real implementation, you might want a dedicated API endpoint for manual entry
-    const summary = {
-      positionsCount: validRows.length,
-      uniqueTickers: [...new Set(validRows.map((p) => p.ticker))].length,
-      benchmark: "SPY",
-    };
+    setManualErrors({});
+    setImporting(true);
 
-    onImportSuccess(summary, validRows);
-    onClose();
-  };
+    try {
+      const csvPayload = buildCsvFromDraftRows(validRows);
+      const formData = new FormData();
+      const blob = new Blob([csvPayload], { type: "text/csv" });
+      formData.append("file", blob, "positions.csv");
+      const positions = await portfolioApi.uploadPositions(formData);
 
-  const hasValidInput = () => {
-    if (activeTab === "manual") {
-      // Check if at least one row has ticker and quantity
-      return manualRows.some(
-        (row) => row.ticker && row.quantity && !isNaN(parseFloat(row.quantity))
-      );
+      const summary = {
+        positionsCount: positions.length,
+        uniqueTickers: new Set(positions.map((p) => p.ticker)).size,
+        benchmark: "SPY",
+      };
+
+      onImportSuccess(summary, positions);
+      onClose();
+    } catch (err) {
+      console.error("Import positions error:", err);
+      const fallback = "Unable to import positions. Please try again.";
+      const message = err?.message || fallback;
+      setUploadErrors([message]);
+      setActiveTab("manual");
+    } finally {
+      setImporting(false);
     }
-    return false;
   };
+
+  const hasDraftInput = draftPositions.some(
+    (row) => (row.ticker || "").trim() || (row.quantity || "").toString().trim()
+  );
+
+  const renderErrors = (title) => (
+    <div
+      style={{
+        background: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(239,68,68,0.35)",
+        borderRadius: "10px",
+        padding: "12px 16px",
+        marginBottom: "20px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+        <Icon size={16}>
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </Icon>
+        <span style={{ fontWeight: 600, color: "#ef4444" }}>{title}</span>
+      </div>
+      <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "13px" }}>
+        {uploadErrors.map((error, index) => (
+          <li key={index} style={{ marginBottom: "4px" }}>
+            {error}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 
   const downloadSampleCSV = () => {
     const csv = `ticker,quantity,portfolio,cost_basis,as_of
@@ -231,7 +436,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
       }}
       onClick={onClose}
     >
-      {/* Modal container - viewport-safe */}
       <div
         style={{
           maxWidth: "700px",
@@ -247,7 +451,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Fixed Header */}
         <div
           style={{
             padding: "24px 28px",
@@ -277,7 +480,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
           </div>
         </div>
 
-        {/* Scrollable Body */}
         <div
           style={{
             flex: 1,
@@ -285,7 +487,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
             padding: "24px 28px",
           }}
         >
-          {/* Tab Navigation */}
           <div
             style={{
               display: "flex",
@@ -326,7 +527,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
             </button>
           </div>
 
-          {/* File Upload Tab */}
           {activeTab === "file" && (
             <div>
               <div style={{ marginBottom: "20px" }}>
@@ -359,7 +559,7 @@ QQQ,-50,hedge,320.00,2024-12-31`;
                     <line x1="12" y1="3" x2="12" y2="15" />
                   </Icon>
                   <p style={{ margin: "12px 0 4px", fontWeight: 600 }}>
-                    {uploading ? "Uploading..." : "Drag & drop or click to upload"}
+                    {processingFile ? "Processing file..." : "Drag & drop or click to upload"}
                   </p>
                   <p className="muted" style={{ margin: 0, fontSize: "13px" }}>
                     Supports .csv, .xlsx
@@ -374,41 +574,11 @@ QQQ,-50,hedge,320.00,2024-12-31`;
                 />
               </div>
 
-              {/* Upload Errors */}
-              {uploadErrors.length > 0 && (
-                <div
-                  style={{
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                    borderRadius: "10px",
-                    padding: "12px 16px",
-                    marginBottom: "20px",
-                    maxHeight: "200px",
-                    overflowY: "auto",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                    <Icon size={16}>
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </Icon>
-                    <span style={{ fontWeight: 600, color: "#ef4444" }}>Upload errors</span>
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "13px" }}>
-                    {uploadErrors.map((error, i) => (
-                      <li key={i} style={{ marginBottom: "4px" }}>
-                        {error}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {uploadErrors.length > 0 && renderErrors("Upload errors")}
 
-              {/* Format Help Button */}
               <button
                 className="btn btn-ghost"
-                onClick={() => setShowFormatHelp(!showFormatHelp)}
+                onClick={() => setShowFormatHelp((prev) => !prev)}
                 style={{
                   width: "100%",
                   justifyContent: "center",
@@ -424,7 +594,6 @@ QQQ,-50,hedge,320.00,2024-12-31`;
                 {showFormatHelp ? "Hide" : "View"} file format requirements
               </button>
 
-              {/* In-Modal Format Help */}
               {showFormatHelp && (
                 <div
                   style={{
@@ -438,7 +607,14 @@ QQQ,-50,hedge,320.00,2024-12-31`;
                   <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 600 }}>
                     Required / optional columns
                   </h4>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "8px",
+                      marginBottom: "16px",
+                    }}
+                  >
                     {[
                       { name: "ticker", desc: "Symbol (e.g., AAPL, MSFT)" },
                       { name: "quantity", desc: "Number of shares" },
@@ -502,14 +678,12 @@ QQQ,-50,hedge,320.00,2024-12-31`}
             </div>
           )}
 
-          {/* Manual Entry Tab */}
           {activeTab === "manual" && (
             <div>
               <div style={{ marginBottom: "12px" }}>
                 <label className="label-sm">Enter positions manually</label>
               </div>
 
-              {/* Editable Table */}
               <div
                 style={{
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -534,21 +708,23 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                       <th style={{ padding: "10px 12px", background: "rgba(255,255,255,0.04)" }}>
                         Currency
                       </th>
-                      <th style={{ padding: "10px 12px", background: "rgba(255,255,255,0.04)", width: "50px" }}>
-
-                      </th>
+                      <th
+                        style={{
+                          padding: "10px 12px",
+                          background: "rgba(255,255,255,0.04)",
+                          width: "50px",
+                        }}
+                      />
                     </tr>
                   </thead>
                   <tbody>
-                    {manualRows.map((row, index) => (
+                    {draftPositions.map((row, index) => (
                       <tr key={index}>
                         <td style={{ padding: "8px" }}>
                           <input
                             type="text"
                             value={row.ticker}
-                            onChange={(e) =>
-                              updateManualRow(index, "ticker", e.target.value.toUpperCase())
-                            }
+                            onChange={(e) => updateDraftRow(index, "ticker", e.target.value.toUpperCase())}
                             placeholder="AAPL"
                             style={{
                               padding: "6px 8px",
@@ -563,7 +739,7 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                           <input
                             type="number"
                             value={row.quantity}
-                            onChange={(e) => updateManualRow(index, "quantity", e.target.value)}
+                            onChange={(e) => updateDraftRow(index, "quantity", e.target.value)}
                             placeholder="100"
                             style={{
                               padding: "6px 8px",
@@ -579,7 +755,7 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                             type="number"
                             step="0.01"
                             value={row.costBasis}
-                            onChange={(e) => updateManualRow(index, "costBasis", e.target.value)}
+                            onChange={(e) => updateDraftRow(index, "costBasis", e.target.value)}
                             placeholder="150.00"
                             style={{
                               padding: "6px 8px",
@@ -593,7 +769,7 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                         <td style={{ padding: "8px" }}>
                           <select
                             value={row.currency}
-                            onChange={(e) => updateManualRow(index, "currency", e.target.value)}
+                            onChange={(e) => updateDraftRow(index, "currency", e.target.value)}
                             style={{
                               padding: "6px 8px",
                               fontSize: "13px",
@@ -605,7 +781,7 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                           </select>
                         </td>
                         <td style={{ padding: "8px", textAlign: "center" }}>
-                          {manualRows.length > 1 && (
+                          {draftPositions.length > 1 && (
                             <button
                               onClick={() => removeManualRow(index)}
                               style={{
@@ -630,7 +806,6 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                 </table>
               </div>
 
-              {/* Add Row Button */}
               <button
                 className="btn btn-ghost"
                 onClick={addManualRow}
@@ -648,7 +823,6 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                 Add row
               </button>
 
-              {/* Manual Entry Errors */}
               {Object.keys(manualErrors).length > 0 && (
                 <div
                   style={{
@@ -671,11 +845,12 @@ QQQ,-50,hedge,320.00,2024-12-31`}
                   </div>
                 </div>
               )}
+
+              {uploadErrors.length > 0 && renderErrors("Import errors")}
             </div>
           )}
         </div>
 
-        {/* Fixed Footer */}
         <div
           style={{
             padding: "16px 28px",
@@ -691,16 +866,15 @@ QQQ,-50,hedge,320.00,2024-12-31`}
           </button>
           <button
             className="btn btn-primary"
-            onClick={activeTab === "manual" ? handleManualImport : undefined}
-            disabled={activeTab === "manual" && !hasValidInput()}
+            onClick={handleImport}
+            disabled={!hasDraftInput || importing}
             style={{
               padding: "10px 20px",
-              opacity: activeTab === "manual" && !hasValidInput() ? 0.5 : 1,
-              cursor:
-                activeTab === "manual" && !hasValidInput() ? "not-allowed" : "pointer",
+              opacity: !hasDraftInput || importing ? 0.5 : 1,
+              cursor: !hasDraftInput || importing ? "not-allowed" : "pointer",
             }}
           >
-            Import portfolio
+            {importing ? "Importing..." : "Import portfolio"}
           </button>
         </div>
       </div>

@@ -23,7 +23,6 @@ export const navSections = [
     id: "info",
     heading: "Info",
     items: [
-      { id: "home", path: "/home", label: "Home" },
       { id: "about", path: "/about", label: "About" },
       { id: "math-engine", path: "/math-engine", label: "Math Engine" },
       { id: "employers", path: "/for-employers", label: "For Employers" },
