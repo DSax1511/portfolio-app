@@ -256,36 +256,52 @@ const formatCurrency = (n) =>
     minimumFractionDigits: 2,
   });
 
-const PortfolioFilters = () => {
+const presets = ["1Y", "3Y", "5Y", "MAX"];
+const benchmarkOptions = ["SPY", "QQQ", "IWM", "ACWI"];
+
+const PortfolioControlBar = ({ onUploadClick, onToggleDemo, demoMode }) => {
   const { benchmark, setBenchmark, dateRange, setDateRange } = usePortfolioAnalytics();
-  const presets = ["1Y", "3Y", "5Y", "MAX"];
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-1">
-        <span className="label-sm">Date range</span>
-        {presets.map((p) => (
-          <button
-            key={p}
-            className={`btn btn-ghost ${dateRange.preset === p ? "btn-primary" : ""}`}
-            style={{ padding: "6px 10px", fontSize: "12px" }}
-            onClick={() => setDateRange({ preset: p, startDate: null, endDate: null })}
+    <div className="dashboard-controls-bar">
+      <div className="dashboard-controls-left">
+        <div className="dashboard-control-group">
+          <p className="label-sm">Date range</p>
+          <div className="dashboard-controls-pills">
+            {presets.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`btn btn-ghost dashboard-pill ${dateRange.preset === preset ? "btn-primary" : ""}`}
+                onClick={() => setDateRange({ preset, startDate: null, endDate: null })}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="dashboard-control-group">
+          <p className="label-sm">Benchmark</p>
+          <select
+            value={benchmark}
+            onChange={(e) => setBenchmark(e.target.value)}
+            className="dashboard-select"
           >
-            {p}
-          </button>
-        ))}
+            {benchmarkOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
-      <div className="flex items-center gap-1">
-        <span className="label-sm">Benchmark</span>
-        <select
-          value={benchmark}
-          onChange={(e) => setBenchmark(e.target.value)}
-          style={{ width: 120 }}
-        >
-          <option value="SPY">SPY</option>
-          <option value="QQQ">QQQ</option>
-          <option value="IWM">IWM</option>
-          <option value="ACWI">ACWI</option>
-        </select>
+      <div className="dashboard-controls-right">
+        <button className="btn btn-primary" onClick={onUploadClick}>
+          Import positions
+        </button>
+        <button className="btn btn-ghost" onClick={onToggleDemo}>
+          {demoMode ? "Exit demo" : "Demo portfolios"}
+        </button>
       </div>
     </div>
   );
@@ -295,12 +311,16 @@ const AppContent = () => {
   const {
     positions: portfolio,
     setPositions,
+    portfolioMode,
+    markDemoPortfolio,
+    markUserPortfolio,
+    clearPortfolioContext,
+    activePortfolioName,
+    activeDemoId,
   } = usePortfolioAnalytics();
   const [savedPortfolio, setSavedPortfolio] = useState([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [demoMode, setDemoMode] = useState(false);
-  const [activeDemo, setActiveDemo] = useState(null);
   const [latestRiskPayload, setLatestRiskPayload] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const demoNotionalsRef = useRef(null);
@@ -356,12 +376,16 @@ const AppContent = () => {
           market_value: 0,
           pnl: 0,
         }));
-        setPositions(formattedPositions);
-      }
+      setPositions(formattedPositions);
     }
+  }
 
-    // Clear any previous upload errors
-    setUploadError("");
+  // Clear any previous upload errors
+  setUploadError("");
+
+  if (positions && positions.length > 0) {
+    markUserPortfolio("Imported portfolio");
+  }
 
     // Show success toast message
     const message = `Imported ${summary.positionsCount} positions across ${summary.uniqueTickers} tickers. Benchmark: ${summary.benchmark}.`;
@@ -383,6 +407,7 @@ const AppContent = () => {
     setDemoMode(true);
     setActiveDemo(demo.id);
     setPositionsLoading(false);
+    markDemoPortfolio(demo.name, demo.id);
     navigate("/pm/dashboard");
   };
 
@@ -391,6 +416,11 @@ const AppContent = () => {
       setPositions(savedPortfolio);
       setDemoMode(false);
       setActiveDemo(null);
+      if (savedPortfolio.length > 0) {
+        markUserPortfolio("Imported portfolio");
+      } else {
+        clearPortfolioContext();
+      }
       navigate("/pm/dashboard");
       return;
     }
@@ -439,10 +469,11 @@ const AppContent = () => {
         <Sidebar />
         <main className="main-content">
           {isPortfolioRoute && (
-            <div className="flex items-center justify-between mb-3">
-              <div className="label-sm text-slate-400">Portfolio controls</div>
-              <PortfolioFilters />
-            </div>
+            <PortfolioControlBar
+              onUploadClick={openImportModal}
+              onToggleDemo={toggleDemoPortfolio}
+              demoMode={demoMode}
+            />
           )}
           <PageLayout>
             <Routes>

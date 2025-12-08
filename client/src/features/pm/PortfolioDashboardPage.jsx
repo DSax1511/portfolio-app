@@ -38,6 +38,12 @@ const yearsAgo = (yrs) => {
   return d.toISOString().slice(0, 10);
 };
 
+const formatPercentValue = (value) =>
+  value === null || value === undefined ? "—" : `${(value * 100).toFixed(2)}%`;
+
+const formatDecimalValue = (value) =>
+  value === null || value === undefined ? "—" : value.toFixed(2);
+
 const buildDemoBacktest = () => {
   const points = 180;
   const baseDate = new Date();
@@ -350,6 +356,24 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
     });
   }, [pmPerf]);
 
+  const chartMetrics = pmPerf?.summary
+    ? [
+        { label: "CAGR", value: formatPercentValue(pmPerf.summary.cagr), helper: "Annualized return" },
+        { label: "Sharpe", value: formatDecimalValue(pmPerf.summary.sharpe_ratio), helper: "Risk-adjusted" },
+        {
+          label: "Volatility",
+          value: formatPercentValue(pmPerf.summary.annualized_volatility),
+          helper: "Annualized vol",
+        },
+        {
+          label: "Max Drawdown",
+          value: formatPercentValue(pmPerf.summary.max_drawdown),
+          helper: "Peak-to-trough",
+          accent: "red",
+        },
+      ]
+    : [];
+
   const hasPortfolio = portfolio.length > 0;
   const exportPositionsCsv = () => {
     if (!portfolio.length) return;
@@ -411,10 +435,10 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
         </div>
       </div>
 
-      <Card title="Portfolio equity vs SPY" subtitle="Live curve normalized to 1.0 at start">
+      <Card title="Portfolio equity vs SPY" subtitle="Live curve normalized to 1.0 at start" className="dashboard-chart-card">
         {pmPerf ? (
-          <div className="analytics-grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
-            <div style={{ minHeight: 220 }}>
+          <div className="dashboard-chart-layout">
+            <div className="dashboard-curve-chart">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={pmPerfChart} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
                   <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
@@ -431,23 +455,16 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="stats-grid">
-              <div className="stat-box">
-                <p className="metric-label">CAGR</p>
-                <div className="metric-value">{((pmPerf.summary.cagr || 0) * 100).toFixed(2)}%</div>
-              </div>
-              <div className="stat-box">
-                <p className="metric-label">Sharpe</p>
-                <div className="metric-value">{(pmPerf.summary.sharpe_ratio || 0).toFixed(2)}</div>
-              </div>
-              <div className="stat-box">
-                <p className="metric-label">Volatility</p>
-                <div className="metric-value">{((pmPerf.summary.annualized_volatility || 0) * 100).toFixed(2)}%</div>
-              </div>
-              <div className="stat-box">
-                <p className="metric-label">Max Drawdown</p>
-                <div className="metric-value">{((pmPerf.summary.max_drawdown || 0) * 100).toFixed(2)}%</div>
-              </div>
+            <div className="dashboard-chart-metrics">
+              {chartMetrics.map((metric) => (
+                <MetricCard
+                  key={metric.label}
+                  label={metric.label}
+                  value={metric.value}
+                  helper={metric.helper}
+                  accent={metric.accent}
+                />
+              ))}
             </div>
           </div>
         ) : pmPerfError ? (

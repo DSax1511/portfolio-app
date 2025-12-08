@@ -26,6 +26,8 @@ export type DrawdownPoint = { date: string; drawdown: number };
 export type RollingPoint = { date: string; vol: number; sharpe: number; beta: number | null };
 export type MonthlyReturn = { year: number; month: number; returnPct: number };
 
+export type PortfolioMode = "none" | "demo" | "user";
+
 export type PortfolioAnalyticsResult = {
   params: Record<string, unknown>;
   summary: Record<string, number>;
@@ -80,6 +82,13 @@ type PortfolioAnalyticsState = {
     start_date?: string | null;
     end_date?: string | null;
   }) => Promise<PortfolioAnalyticsResult | null>;
+  portfolioMode: PortfolioMode;
+  activePortfolioName: string | null;
+  activePortfolioId: string | null;
+  activeDemoId: string | null;
+  markDemoPortfolio: (name: string, id: string) => void;
+  markUserPortfolio: (name?: string) => void;
+  clearPortfolioContext: () => void;
 };
 
 const PortfolioAnalyticsContext = createContext<PortfolioAnalyticsState | undefined>(undefined);
@@ -102,6 +111,10 @@ export const PortfolioAnalyticsProvider = ({ children }: { children: React.React
   const [backtestAnalytics, setBacktestAnalytics] = useState<PortfolioAnalyticsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [portfolioMode, setPortfolioMode] = useState<PortfolioMode>("none");
+  const [activePortfolioName, setActivePortfolioName] = useState<string | null>("No portfolio selected");
+  const [activePortfolioId, setActivePortfolioId] = useState<string | null>(null);
+  const [activeDemoId, setActiveDemoId] = useState<string | null>(null);
 
   const derivedRange = useMemo(() => {
     if (dateRange.preset === "CUSTOM") return { start: dateRange.startDate, end: dateRange.endDate };
@@ -204,6 +217,28 @@ export const PortfolioAnalyticsProvider = ({ children }: { children: React.React
     error,
     runLiveAnalytics,
     runBacktestAnalytics,
+    portfolioMode,
+    activePortfolioName,
+    activePortfolioId,
+    activeDemoId,
+    markDemoPortfolio: (name: string, id: string) => {
+      setPortfolioMode("demo");
+      setActivePortfolioName(name);
+      setActivePortfolioId(id);
+      setActiveDemoId(id);
+    },
+    markUserPortfolio: (name = "Imported portfolio") => {
+      setPortfolioMode("user");
+      setActivePortfolioName(name);
+      setActivePortfolioId("live");
+      setActiveDemoId(null);
+    },
+    clearPortfolioContext: () => {
+      setPortfolioMode("none");
+      setActivePortfolioName("No portfolio selected");
+      setActivePortfolioId(null);
+      setActiveDemoId(null);
+    },
   };
 
   return <PortfolioAnalyticsContext.Provider value={value}>{children}</PortfolioAnalyticsContext.Provider>;
