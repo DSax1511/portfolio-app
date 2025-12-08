@@ -419,6 +419,7 @@ const PortfolioDashboardPage = ({ portfolio, formatCurrency, onUploadClick, onTo
     <PageShell
       title="Portfolio Dashboard"
       subtitle="Live portfolio value, P&L, exposures, and daily focus for today's book."
+      contextStatus="live"
     >
       {!hasPortfolio && (
         <EmptyState

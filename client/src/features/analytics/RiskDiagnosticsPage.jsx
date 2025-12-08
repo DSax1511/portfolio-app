@@ -14,6 +14,7 @@ import SectionHeader from "../../components/layout/SectionHeader";
 import { usePortfolioAnalytics } from "../../state/portfolioAnalytics";
 import { useActiveRun } from "../../state/activeRun";
 import { portfolioApi } from "../../services/portfolioApi";
+import ResearchDisclaimerBanner from "../../components/ui/ResearchDisclaimerBanner";
 
 const formatPercent = (value, decimals = 2) =>
   value == null ? "—" : `${(value * 100).toFixed(decimals)}%`;
@@ -175,8 +176,9 @@ const RiskDiagnosticsPage = ({ analysisPayload }) => {
 
   return (
     <PageShell
-      title="Risk & Diagnostics"
-      subtitle="Deep analytics for the latest backtest: performance, drawdowns, heatmaps, and stress tests."
+      title="Backtest Performance & Risk Summary"
+      subtitle="Deep diagnostics for the latest backtest: performance, drawdowns, heatmaps, and stress tests."
+      contextStatus="backtest"
       actions={
         <div className="action-row">
           <button className="btn btn-ghost" onClick={() => setShowMethodology(true)}>
@@ -185,6 +187,7 @@ const RiskDiagnosticsPage = ({ analysisPayload }) => {
         </div>
       }
     >
+      <ResearchDisclaimerBanner />
       {!activeRunId && !primaryData && (
         <Card>
           <p className="font-semibold text-slate-100">No active backtest selected</p>

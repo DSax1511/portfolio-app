@@ -5,9 +5,12 @@ import PageShell from "../../components/ui/PageShell";
 import ExperimentHistory from "../../components/ui/ExperimentHistory";
 import ErrorBanner from "../../components/ui/ErrorBanner";
 import MetricCard from "../../components/ui/MetricCard";
+import ResearchDisclaimerBanner from "../../components/ui/ResearchDisclaimerBanner";
 import { useQuantLabStore } from "../../state/quantLabStore";
 import { useActiveRun } from "../../state/activeRun";
 import { formatDateTick } from "../../utils/format";
+import { getMetricMethodology, getSignificanceHint, isMetricSignificant } from "../../utils/significance";
+import type { MetricMetadataMap } from "../../types/portfolio";
 
 const today = new Date();
 const defaultEndDate = today.toISOString().slice(0, 10);
@@ -156,29 +159,95 @@ const StrategyBuilderPage = () => {
 
   const summary = result?.summary;
   const trades = result?.trades || [];
-  const summaryMetrics = summary
+  const sampleSize = result?.dates?.length ?? 0;
+  const summaryMetadata: MetricMetadataMap = (result?.metric_metadata as MetricMetadataMap) || {};
+  const sampleSize = result?.dates?.length ?? 0;
+  const summaryMetricTemplates = summary
     ? [
-        { label: "CAGR", value: formatPercentValue(summary.cagr), helper: "Annualized return" },
-        { label: "Volatility", value: formatPercentValue(summary.annualized_volatility), helper: "Annualized vol" },
-        { label: "Sharpe", value: metric(summary.sharpe_ratio), helper: "Risk-adjusted" },
-        { label: "Sortino", value: metric(summary.sortino_ratio), helper: "Downside risk" },
+        {
+          label: "CAGR",
+          raw: summary.cagr,
+          format: formatPercentValue,
+          helper: "Annualized return",
+          metricKey: "CAGR",
+        },
+        {
+          label: "Volatility",
+          raw: summary.annualized_volatility,
+          format: formatPercentValue,
+          helper: "Annualized vol",
+        },
+        {
+          label: "Sharpe",
+          raw: summary.sharpe_ratio,
+          format: metric,
+          helper: "Risk-adjusted",
+          metricKey: "Sharpe",
+        },
+        {
+          label: "Sortino",
+          raw: summary.sortino_ratio,
+          format: metric,
+          helper: "Downside risk",
+          metricKey: "Sortino",
+        },
         {
           label: "Max Drawdown",
-          value: formatPercentValue(summary.max_drawdown),
+          raw: summary.max_drawdown,
+          format: formatPercentValue,
           helper: "Worst peak-to-trough",
           accent: "red",
         },
-        { label: "Alpha", value: metric(summary.alpha), helper: "vs benchmark" },
-        { label: "Beta", value: metric(summary.beta), helper: "vs benchmark" },
+        {
+          label: "Alpha",
+          raw: summary.alpha,
+          format: metric,
+          helper: "vs benchmark",
+          metricKey: "Alpha",
+        },
+        {
+          label: "Beta",
+          raw: summary.beta,
+          format: metric,
+          helper: "vs benchmark",
+          metricKey: "Beta",
+        },
         {
           label: "Win Rate",
-          value: formatPercentValue(summary.win_rate),
+          raw: summary.win_rate,
+          format: formatPercentValue,
           helper: "Winning trades",
           accent: "green",
         },
-        { label: "Trades", value: `${trades.length}`, helper: "Total executions" },
+        {
+          label: "Trades",
+          raw: trades.length,
+          format: (value) => (typeof value === "number" ? `${Math.round(value)}` : "—"),
+          helper: "Total executions",
+        },
       ]
     : [];
+  const summaryMetrics = summaryMetricTemplates.map((definition) => {
+    const metricKey = definition.metricKey ?? definition.label;
+    const rawValue = definition.raw;
+    const metadata = summaryMetadata[metricKey];
+    const infoText = metadata?.methodology?.description ?? getMetricMethodology(metricKey);
+    const backendSignificant = metadata?.is_significant;
+    const fallbackSignificance = definition.metricKey
+      ? isMetricSignificant(rawValue, metricKey, sampleSize)
+      : true;
+    const isSignificant = backendSignificant ?? fallbackSignificance;
+    return {
+      label: definition.label,
+      value: definition.format(rawValue),
+      helper: definition.helper,
+      accent: definition.accent,
+      infoText,
+      muted: definition.metricKey ? !isSignificant : false,
+      mutedMessage:
+        definition.metricKey && !isSignificant ? metadata?.methodology?.assumptions ?? getSignificanceHint() : undefined,
+    };
+  });
 
   const exportTrades = () => {
     if (!trades.length) return;
@@ -195,9 +264,11 @@ const StrategyBuilderPage = () => {
 
   return (
     <PageShell
-      title="Quant Lab – Strategy Research"
+      title="Quant Lab – Strategy Research Diagnostics"
       subtitle="Design and backtest trading strategies with configurable parameters."
+      contextStatus="backtest"
     >
+      <ResearchDisclaimerBanner />
       <div className="strategy-top-grid">
         <Card title="Strategy configuration" subtitle="Define symbol, logic, and execution settings" className="strategy-config-card">
           <form className="analytics-form" onSubmit={runBacktest}>
@@ -322,7 +393,11 @@ const StrategyBuilderPage = () => {
           />
         </Card>
 
-        <Card title="Strategy results" subtitle="Performance vs benchmark" className="strategy-chart-card">
+        <Card
+          title="Strategy Research Diagnostics"
+          subtitle="Backtest Diagnostics vs Benchmark"
+          className="strategy-chart-card"
+        >
           {isLoading && <p className="muted">Running backtest...</p>}
           {errMsg && <p className="error-text">{errMsg}</p>}
           {result ? (
@@ -393,6 +468,9 @@ const StrategyBuilderPage = () => {
                   value={metricDefinition.value}
                   helper={metricDefinition.helper}
                   accent={metricDefinition.accent}
+                  infoText={metricDefinition.infoText}
+                  muted={metricDefinition.muted}
+                  mutedMessage={metricDefinition.mutedMessage}
                 />
               ))}
             </div>

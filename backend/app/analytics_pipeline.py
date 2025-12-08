@@ -9,6 +9,7 @@ import pandas as pd
 
 from .data import fetch_price_history
 from . import commentary
+from .services.metrics_significance import annotate_correlation_rows, build_metric_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +243,8 @@ def _correlation_matrix(asset_returns: pd.DataFrame) -> List[Dict[str, Any]]:
   for i, a in enumerate(corr.index):
     for j, b in enumerate(corr.columns):
       rows.append({"a": a, "b": b, "value": float(corr.iloc[i, j])})
-  return rows
+  sample_size = asset_returns.shape[0]
+  return annotate_correlation_rows(rows, sample_size)
 
 
 def _var_cvar(port_returns: pd.Series) -> Dict[str, float]:
@@ -339,9 +341,11 @@ def _build_payload(port_returns: pd.Series, bench_returns: Optional[pd.Series], 
   attribution = _risk_attribution(asset_returns_clean, weights if weights is not None else np.array([]), sectors)
   distribution = _return_distribution(port_returns)
   monthly_rows = _monthly_returns(port_returns)
+  summary_metadata = build_metric_metadata(summary, len(port_returns))
   return {
     "params": params,
     "summary": summary,
+    "metric_metadata": summary_metadata,
     "equity_curve": {"dates": [d.strftime("%Y-%m-%d") for d in equity.index], "equity": [float(v) for v in equity.values]},
     "benchmark_curve": {"dates": [d.strftime("%Y-%m-%d") for d in bench_equity.index], "equity": [float(v) for v in bench_equity.values]} if bench_equity is not None else None,
     "relative_curve": {

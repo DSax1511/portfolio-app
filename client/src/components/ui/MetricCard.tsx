@@ -1,3 +1,6 @@
+import { type FC } from "react";
+import MetricInfoPopover from "./MetricInfoPopover";
+
 type MetricAccent = "neutral" | "green" | "red";
 
 export interface MetricCardProps {
@@ -6,6 +9,9 @@ export interface MetricCardProps {
   tooltip?: string;
   accent?: MetricAccent;
   helper?: string | null;
+  infoText?: string;
+  muted?: boolean;
+  mutedMessage?: string;
 }
 
 const accentClasses: Record<MetricAccent, string> = {
@@ -14,23 +20,37 @@ const accentClasses: Record<MetricAccent, string> = {
   red: "border-rose-500/40 bg-gradient-to-br from-rose-950/40 to-slate-900/90 hover:from-rose-950/60 hover:to-slate-900 hover:border-rose-500/60",
 };
 
-const MetricCard = ({ label, value, tooltip, accent = "neutral", helper }: MetricCardProps) => {
+const MetricCard: FC<MetricCardProps> = ({
+  label,
+  value,
+  tooltip,
+  accent = "neutral",
+  helper,
+  infoText,
+  muted = false,
+  mutedMessage,
+}) => {
   return (
     <div
-      className={`group rounded-xl border ${accentClasses[accent]} px-5 py-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] cursor-default backdrop-blur-sm`}
+      className={`group rounded-xl border ${accentClasses[accent]} px-5 py-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] cursor-default backdrop-blur-sm ${
+        muted ? "metric-card--muted" : ""
+      }`}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="text-[10px] uppercase tracking-widest font-medium text-slate-400 group-hover:text-slate-300 transition-colors">
           {label}
         </div>
-        {tooltip && (
-          <span
-            title={tooltip}
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-[10px] text-slate-300 cursor-help hover:bg-slate-700 hover:border-slate-500 transition-all"
-          >
-            ?
-          </span>
-        )}
+        <div className="flex items-center gap-1">
+          {infoText && <MetricInfoPopover content={infoText} />}
+          {tooltip && (
+            <span
+              title={tooltip}
+              className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-[10px] text-slate-300 cursor-help hover:bg-slate-700 hover:border-slate-500 transition-all"
+            >
+              ?
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex items-baseline gap-2">
         <div className="text-2xl font-bold text-slate-50 leading-tight tracking-tight">
@@ -42,6 +62,11 @@ const MetricCard = ({ label, value, tooltip, accent = "neutral", helper }: Metri
           </div>
         )}
       </div>
+      {muted && mutedMessage && (
+        <p className="text-xs text-slate-400 mt-1 italic">
+          {mutedMessage}
+        </p>
+      )}
     </div>
   );
 };

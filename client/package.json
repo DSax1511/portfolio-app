@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "node ./scripts/run-vitest.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.3.1",

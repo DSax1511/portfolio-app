@@ -48,6 +48,22 @@ export interface PerformanceMetrics {
   [key: string]: number;
 }
 
+export interface MetricMethodology {
+  title: string;
+  description: string;
+  window_length?: string | null;
+  assumptions?: string | null;
+}
+
+export interface MetricMetadata {
+  is_significant?: boolean;
+  methodology_id?: string;
+  methodology?: MetricMethodology | null;
+  p_value?: number | null;
+}
+
+export type MetricMetadataMap = Record<string, MetricMetadata>;
+
 export interface PortfolioMetricsResponse {
   tickers: string[];
   weights: number[];
@@ -57,6 +73,7 @@ export interface PortfolioMetricsResponse {
   equity_curve: EquityCurve;
   benchmark?: BenchmarkResponse | null;
   commentary?: Record<string, string> | null;
+  metric_metadata?: MetricMetadataMap | null;
 }
 
 export interface BacktestResponse extends PortfolioMetricsResponse {
@@ -94,6 +111,7 @@ export interface PMBacktestResponse {
   };
   run_id?: string;
   analytics?: any;
+  metric_metadata?: MetricMetadataMap | null;
 }
 
 export interface AllocationItem {

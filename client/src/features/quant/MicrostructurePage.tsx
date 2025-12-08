@@ -779,6 +779,7 @@ const MicrostructurePage = () => {
     <PageShell
       title="Quant Lab – Market Structure"
       subtitle="Analyze spreads, volume, and microstructure behavior for a given symbol."
+      contextStatus="paper"
     >
       <div className="flex flex-col gap-5">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg">

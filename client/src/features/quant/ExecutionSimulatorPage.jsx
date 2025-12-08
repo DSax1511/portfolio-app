@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
+import { EXECUTION_PRESET_OPTIONS, getExecutionPresetConfig } from "../../utils/executionPresets";
 
 const VENUE_OPTIONS = ["NASDAQ", "NYSE", "ARCA", "EDGX", "IEX", "Dark pool"];
 const ALGORITHMS = ["TWAP", "VWAP", "POV", "Implementation Shortfall", "Liquidity Seeking"];
@@ -276,6 +277,7 @@ const ExecutionSimulatorPage = () => {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
 
   const handleChange = (key) => (e) => {
     const value = e.target.type === "number" ? Number(e.target.value) : e.target.value;
@@ -289,6 +291,37 @@ const ExecutionSimulatorPage = () => {
       else set.delete(venue);
       return { ...prev, venues: Array.from(set) };
     });
+  };
+
+  const applyPreset = (presetId) => {
+    if (!presetId) {
+      setSelectedPreset("");
+      return;
+    }
+    try {
+      const preset = getExecutionPresetConfig(presetId);
+      setSettings((prev) => ({
+        ...prev,
+        notional: preset.notional,
+        algorithm: preset.algorithm,
+        participationRate: preset.participationRate,
+        urgency: preset.urgency,
+        maxChildSize: preset.maxChildSize,
+        latencyMs: preset.latencyMs,
+        routingPreference: preset.routingPreference,
+        impactModel: preset.impactModel,
+        venues: preset.venues,
+        side: preset.side,
+      }));
+      setSelectedPreset(presetId);
+    } catch (err) {
+      console.warn(err);
+    }
+  };
+
+  const handlePresetChange = (event) => {
+    const value = event.target.value;
+    applyPreset(value);
   };
 
   const handleRun = () => {
@@ -327,6 +360,7 @@ const ExecutionSimulatorPage = () => {
       section="Quant Lab"
       title="Execution Lab"
       subtitle="Simulate order execution, fills, and slippage across venues."
+      contextStatus="paper"
     >
       <p className="muted" style={{ marginTop: "-4px" }}>
         Offline simulator using synthetic intraday/microstructure patterns to visualize price path, fills, venue allocation, and impact.
@@ -334,6 +368,19 @@ const ExecutionSimulatorPage = () => {
       <div className="analytics-grid" style={{ gridTemplateColumns: "380px 1fr", alignItems: "start" }}>
         <Card title="Simulation settings">
           <div className="analytics-form">
+            <div className="form-row">
+              <label>
+                Preset
+                <select value={selectedPreset} onChange={handlePresetChange}>
+                  <option value="">Custom</option>
+                  {EXECUTION_PRESET_OPTIONS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="form-row">
               <label>
                 Symbol

@@ -15,6 +15,7 @@ import pandas as pd
 import yaml
 import yfinance as yf
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import analytics, backtests, commentary, optimizers_v2, covariance_estimation, factor_models, backtesting, quant_strategies, factor_attribution
@@ -52,6 +53,7 @@ from .infra.utils import IndicatorSpec, StrategyRule, normalize_weights, parse_n
 from .infra.rate_limit import rate_limit_check
 from .core.errors import ErrorCode, ApiErrorResponse, error_response
 from .quant_microstructure import compute_microstructure
+from .services.metrics_significance import build_metric_metadata
 from .models import (
     ApiError,
     BacktestRequest,
@@ -89,6 +91,7 @@ from .models import (
     TaxHarvestResponse,
     TaxHarvestSummary,
 )
+from .schemas.common import ErrorResponse
 from .rebalance import position_sizing, suggest_rebalance
 
 
@@ -126,6 +129,34 @@ logging.getLogger("uvicorn.error").info("CORS allow_origins=%s allow_origin_rege
 logger = logging.getLogger("app")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
+
+
+def _sanitize_detail(detail: Any) -> str:
+    if isinstance(detail, str):
+        return detail
+    return json.dumps(detail, default=str)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    detail = _sanitize_detail(exc.detail)
+    logger.warning("HTTP error %s for %s: %s", exc.status_code, request.url.path, detail)
+    payload = ErrorResponse(
+        detail=detail,
+        code=f"HTTP_{exc.status_code}",
+        meta={"path": request.url.path},
+    )
+    return JSONResponse(status_code=exc.status_code, content=payload.dict())
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled exception while processing %s", request.url.path, exc_info=exc)
+    detail = "An internal server error occurred. Please try again later."
+    if settings.environment != "production":
+        detail = str(exc)
+    payload = ErrorResponse(detail=detail, code="INTERNAL_ERROR", meta={"path": request.url.path})
+    return JSONResponse(status_code=500, content=payload.dict())
 
 
 @app.get("/api/health")
@@ -235,6 +266,7 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
     portfolio_returns = analytics.compute_portfolio_returns(prices, weights)
 
     stats = compute_performance_stats(portfolio_returns)
+    metric_metadata = build_metric_metadata(stats, len(portfolio_returns))
     curve = equity_curve_payload(portfolio_returns)
 
     # SPY benchmark
@@ -270,6 +302,7 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
         start_date=curve["dates"][0] if curve["dates"] else request.start_date,
         end_date=curve["dates"][-1] if curve["dates"] else request.end_date,
         metrics=stats,
+        metric_metadata=metric_metadata,
         equity_curve=curve,
         benchmark=benchmark_payload,
         commentary=commentary_payload,
@@ -742,6 +775,7 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
         meta={"label": f"PM {request.tickers}", "benchmark": benchmark_symbol},
     )
     analytics_payload["run_id"] = run_id
+    metric_metadata = analytics_payload.get("metric_metadata")
 
     return PMBacktestResponse(
         dates=dates,
@@ -750,6 +784,7 @@ def pm_backtest(request: PMBacktestRequest) -> PMBacktestResponse:
         portfolio_returns=[float(r) for r in portfolio_returns],
         benchmark_returns=[float(r) for r in bench_returns],
         summary=summary,
+        metric_metadata=metric_metadata,
         run_id=run_id,
         analytics=analytics_payload,
     )
@@ -849,7 +884,6 @@ def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
         pd.Series(payload["returns"], index=pd.to_datetime(payload["dates"])),
         pd.Series(payload["benchmark_returns"], index=pd.to_datetime(payload["dates"])),
     )
-
     # Trade-level stats
     wins = [t.pnl for t in payload["trades"] if t.pnl > 0]
     losses = [t.pnl for t in payload["trades"] if t.pnl < 0]
@@ -865,6 +899,7 @@ def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
             "avg_loss": avg_loss,
         }
     )
+    metric_metadata = build_metric_metadata(summary, len(payload.get("returns") or []))
 
     return QuantBacktestResponse(
         dates=payload["dates"],
@@ -874,6 +909,7 @@ def quant_backtest(request: QuantBacktestRequest) -> QuantBacktestResponse:
         benchmark_returns=payload["benchmark_returns"],
         trades=payload["trades"],
         summary=summary,
+        metric_metadata=metric_metadata,
     )
 
 

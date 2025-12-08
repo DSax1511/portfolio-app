@@ -117,6 +117,7 @@ const TaxHarvestPage = () => {
     <PageShell
       title="Tax Harvest"
       subtitle="Identify tax-aware trades and visualize harvestable losses with wash-sale awareness."
+      contextStatus="live"
     >
       <div className="tax-harvest-header">
         <div className="tax-summary-grid">

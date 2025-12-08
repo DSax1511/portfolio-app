@@ -73,6 +73,9 @@ const HomePage = () => {
             >
               Read the Whitepaper
             </a>
+            <Link to="/for-employers" className="btn btn-ghost">
+              For Employers
+            </Link>
           </div>
           <div className="landing-hero__notes">
             <span>4 curated portfolios</span>
@@ -148,7 +151,7 @@ const HomePage = () => {
         </div>
         <Card className="landing-bio-card">
           <p className="muted">
-            I’m David Saxton, a full-stack engineer and aspiring quant focused on cybersecurity, market microstructure,
+            I’m David Saxton, a full-stack quant research engineer focused on market microstructure, execution modeling,
             and portfolio analytics. Saxton PI is the product of end-to-end tooling that combines probabilistic backtests
             with intuitive dashboards.
           </p>

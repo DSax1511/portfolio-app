@@ -5,6 +5,8 @@ import "../App.css";
 import PageLayout from "../components/layout/PageLayout";
 import Sidebar from "../components/layout/Sidebar";
 import TopNav from "../components/layout/TopNav";
+import ModeSelector from "../components/ui/ModeSelector";
+import ErrorBoundary from "../components/ui/ErrorBoundary";
 import ImportPositionsModal from "../features/pm/components/ImportPositionsModal";
 import AboutPage from "../features/about/AboutPage";
 import MathEnginePage from "../features/about/MathEnginePage";
@@ -22,9 +24,11 @@ import StrategyBuilderPage from "../features/quant/StrategyBuilderPage";
 import PortfolioLabPage from "../pages/PortfolioLabPage";
 import AdvancedBacktestPage from "../pages/AdvancedBacktestPage";
 import RiskLabPage from "../pages/RiskLabPage";
+import ForEmployersPage from "../pages/ForEmployersPage";
 import { PortfolioAnalyticsProvider, usePortfolioAnalytics } from "../state/portfolioAnalytics";
 import { QuantLabProvider } from "../state/quantLabStore";
 import { ActiveRunProvider } from "../state/activeRun";
+import { AppModeProvider } from "../state/appMode";
 
 const DEMO_PORTFOLIOS = [
   {
@@ -438,16 +442,17 @@ const AppContent = () => {
     const path = location.pathname || "";
     if (path.startsWith("/home")) return "Home";
     if (path.startsWith("/pm/dashboard")) return "Portfolio Dashboard";
-    if (path.startsWith("/pm/historical-analysis")) return "Historical Analysis";
-    if (path.startsWith("/pm/risk-diagnostics") || path.startsWith("/analytics")) return "Analytics & Risk";
+    if (path.startsWith("/pm/historical-analysis")) return "Historical Diagnostics";
+    if (path.startsWith("/pm/risk-diagnostics") || path.startsWith("/analytics")) return "Backtest Performance & Risk";
     if (path.startsWith("/pm/tax-harvest")) return "Tax Harvest";
-    if (path.startsWith("/quant/strategy-research")) return "Strategy Research";
+    if (path.startsWith("/quant/strategy-research")) return "Strategy Research Diagnostics";
     if (path.startsWith("/quant/regimes")) return "Market Regimes";
-    if (path.startsWith("/quant/execution-lab")) return "Execution Simulator";
+    if (path.startsWith("/quant/execution-lab")) return "Execution & Microstructure";
     if (path.startsWith("/quant/market-structure")) return "Market Structure";
     if (path.startsWith("/about")) return "About";
     if (path.startsWith("/contact")) return "Contact";
     if (path.startsWith("/math-engine")) return "Mathematical Engine";
+    if (path.startsWith("/for-employers")) return "For Employers";
     return "Saxton PI";
   })();
   const showMobileNotice = isCompactViewport && !mobileNoticeDismissed;
@@ -464,6 +469,7 @@ const AppContent = () => {
         onExitDemo={toggleDemoPortfolio}
         onUploadClick={openImportModal}
       />
+      <ModeSelector />
       <ImportPositionsModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
@@ -481,56 +487,59 @@ const AppContent = () => {
             />
           )}
           <PageLayout>
-            <Routes>
-              <Route path="/" element={<Navigate to="/home" replace />} />
-              <Route path="/home" element={<HomePage />} />
-              <Route
-                path="/pm/dashboard"
-                element={
-                  <PortfolioDashboardPage
-                    portfolio={portfolio}
-                    formatCurrency={formatCurrency}
-                    onUploadClick={openImportModal}
-                    onToggleDemo={toggleDemoPortfolio}
-                    demoMode={demoMode}
-                  />
-                }
-              />
-              <Route path="/pm/overview" element={<Navigate to="/pm/dashboard" replace />} />
-              <Route path="/overview" element={<Navigate to="/pm/dashboard" replace />} />
-              <Route
-                path="/pm/allocation-rebalance"
-                element={<AllocationRebalancePage portfolio={portfolio} demoMode={demoMode} />}
-              />
-              <Route path="/pm/allocation" element={<Navigate to="/pm/allocation-rebalance" replace />} />
-              <Route
-                path="/pm/historical-analysis"
-                element={<HistoricalAnalysisPage onRunComplete={setLatestRiskPayload} />}
-              />
-              <Route path="/pm/backtests" element={<Navigate to="/pm/historical-analysis" replace />} />
-              <Route
-                path="/pm/risk-diagnostics"
-                element={<RiskDiagnosticsPage analysisPayload={latestRiskPayload} />}
-              />
-              <Route path="/pm/risk" element={<Navigate to="/pm/risk-diagnostics" replace />} />
-              <Route path="/pm/tax-harvest" element={<TaxHarvestPage />} />
-              <Route path="/analytics" element={<Navigate to="/pm/risk-diagnostics" replace />} />
-              <Route path="/quant/strategy-research" element={<StrategyBuilderPage />} />
-              <Route path="/quant/strategy-builder" element={<Navigate to="/quant/strategy-research" replace />} />
-              <Route path="/quant/backtest-engine" element={<Navigate to="/quant/strategy-research" replace />} />
-              <Route path="/quant/market-structure" element={<MicrostructurePage />} />
-              <Route path="/quant/microstructure" element={<Navigate to="/quant/market-structure" replace />} />
-              <Route path="/quant/regimes" element={<RegimesPage />} />
-              <Route path="/quant/execution-lab" element={<ExecutionSimulatorPage />} />
-              <Route path="/quant/execution-simulator" element={<Navigate to="/quant/execution-lab" replace />} />
-              <Route path="/phase3/portfolio-lab" element={<PortfolioLabPage />} />
-              <Route path="/phase3/advanced-backtest" element={<AdvancedBacktestPage />} />
-              <Route path="/phase3/risk-lab" element={<RiskLabPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/math-engine" element={<MathEnginePage />} />
-              <Route path="*" element={<Navigate to="/home" replace />} />
-            </Routes>
+            <ErrorBoundary key={location.pathname}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route
+                  path="/pm/dashboard"
+                  element={
+                    <PortfolioDashboardPage
+                      portfolio={portfolio}
+                      formatCurrency={formatCurrency}
+                      onUploadClick={openImportModal}
+                      onToggleDemo={toggleDemoPortfolio}
+                      demoMode={demoMode}
+                    />
+                  }
+                />
+                <Route path="/pm/overview" element={<Navigate to="/pm/dashboard" replace />} />
+                <Route path="/overview" element={<Navigate to="/pm/dashboard" replace />} />
+                <Route
+                  path="/pm/allocation-rebalance"
+                  element={<AllocationRebalancePage portfolio={portfolio} demoMode={demoMode} />}
+                />
+                <Route path="/pm/allocation" element={<Navigate to="/pm/allocation-rebalance" replace />} />
+                <Route
+                  path="/pm/historical-analysis"
+                  element={<HistoricalAnalysisPage onRunComplete={setLatestRiskPayload} />}
+                />
+                <Route path="/pm/backtests" element={<Navigate to="/pm/historical-analysis" replace />} />
+                <Route
+                  path="/pm/risk-diagnostics"
+                  element={<RiskDiagnosticsPage analysisPayload={latestRiskPayload} />}
+                />
+                <Route path="/pm/risk" element={<Navigate to="/pm/risk-diagnostics" replace />} />
+                <Route path="/pm/tax-harvest" element={<TaxHarvestPage />} />
+                <Route path="/analytics" element={<Navigate to="/pm/risk-diagnostics" replace />} />
+                <Route path="/quant/strategy-research" element={<StrategyBuilderPage />} />
+                <Route path="/quant/strategy-builder" element={<Navigate to="/quant/strategy-research" replace />} />
+                <Route path="/quant/backtest-engine" element={<Navigate to="/quant/strategy-research" replace />} />
+                <Route path="/quant/market-structure" element={<MicrostructurePage />} />
+                <Route path="/quant/microstructure" element={<Navigate to="/quant/market-structure" replace />} />
+                <Route path="/quant/regimes" element={<RegimesPage />} />
+                <Route path="/quant/execution-lab" element={<ExecutionSimulatorPage />} />
+                <Route path="/quant/execution-simulator" element={<Navigate to="/quant/execution-lab" replace />} />
+                <Route path="/phase3/portfolio-lab" element={<PortfolioLabPage />} />
+                <Route path="/phase3/advanced-backtest" element={<AdvancedBacktestPage />} />
+                <Route path="/phase3/risk-lab" element={<RiskLabPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/for-employers" element={<ForEmployersPage />} />
+                <Route path="/math-engine" element={<MathEnginePage />} />
+                <Route path="*" element={<Navigate to="/home" replace />} />
+              </Routes>
+            </ErrorBoundary>
             {uploadError && (
               <p className="error-text" style={{ marginTop: "0.5rem" }}>
                 {uploadError}
@@ -565,13 +574,15 @@ const AppContent = () => {
 
 const AppShell = () => (
   <BrowserRouter>
-    <ActiveRunProvider>
-      <PortfolioAnalyticsProvider>
-        <QuantLabProvider>
-          <AppContent />
-        </QuantLabProvider>
-      </PortfolioAnalyticsProvider>
-    </ActiveRunProvider>
+    <AppModeProvider>
+      <ActiveRunProvider>
+        <PortfolioAnalyticsProvider>
+          <QuantLabProvider>
+            <AppContent />
+          </QuantLabProvider>
+        </PortfolioAnalyticsProvider>
+      </ActiveRunProvider>
+    </AppModeProvider>
   </BrowserRouter>
 );
 

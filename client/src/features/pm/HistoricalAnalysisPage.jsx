@@ -4,6 +4,7 @@ import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 import ErrorBanner from "../../components/ui/ErrorBanner";
 import Spinner from "../../components/ui/Spinner";
+import ResearchDisclaimerBanner from "../../components/ui/ResearchDisclaimerBanner";
 import { usePortfolioAnalytics } from "../../state/portfolioAnalytics";
 import { useActiveRun } from "../../state/activeRun";
 
@@ -163,9 +164,11 @@ const HistoricalAnalysisPage = ({ onRunComplete }) => {
 
   return (
     <PageShell
-      title="Historical Analysis – Backtest Lab"
+      title="Historical Diagnostics – Backtest Lab"
       subtitle="Run comprehensive portfolio backtests with rebalancing, trading costs, and in-depth performance diagnostics."
+      contextStatus="backtest"
     >
+      <ResearchDisclaimerBanner />
       <div className="analytics-grid">
         <Card title="Backtest Setup" subtitle="Configure your portfolio simulation">
           <form className="analytics-form" onSubmit={runBacktest}>
@@ -317,7 +320,7 @@ const HistoricalAnalysisPage = ({ onRunComplete }) => {
         )}
 
         {backtestAnalytics && (
-          <Card title="Performance Summary" subtitle="Key metrics vs benchmark">
+          <Card title="Backtest Performance & Risk Summary" subtitle="Key diagnostics vs benchmark">
             <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
               <div className="stat-box">
                 <p className="metric-label">CAGR</p>

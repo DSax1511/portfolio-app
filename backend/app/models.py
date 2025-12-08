@@ -12,6 +12,20 @@ class ApiError(BaseModel):
     detail: str
 
 
+class MetricMethodology(BaseModel):
+    title: str
+    description: str
+    window_length: Optional[str] = None
+    assumptions: Optional[str] = None
+
+
+class MetricMetadata(BaseModel):
+    is_significant: Optional[bool] = None
+    methodology_id: Optional[str] = None
+    methodology: Optional[MetricMethodology] = None
+    p_value: Optional[float] = None
+
+
 class Position(BaseModel):
     ticker: str
     description: str
@@ -111,6 +125,7 @@ class PortfolioMetricsRequest(BaseModel):
 class PortfolioMetricsResponse(BaseModel):
     tickers: List[str]
     weights: List[float]
+    metric_metadata: Optional[Dict[str, MetricMetadata]] = None
     start_date: Optional[str]
     end_date: Optional[str]
     metrics: Dict[str, float]
@@ -453,6 +468,7 @@ class QuantBacktestResponse(BaseModel):
     benchmark_returns: List[float]
     trades: List[Trade]
     summary: Dict[str, float]
+    metric_metadata: Optional[Dict[str, MetricMetadata]] = None
 
 
 class PMBacktestRequest(BaseModel):
@@ -498,6 +514,7 @@ class PMBacktestResponse(BaseModel):
     portfolio_returns: List[float]
     benchmark_returns: List[float]
     summary: Dict[str, float]
+    metric_metadata: Optional[Dict[str, MetricMetadata]] = None
     run_id: Optional[str] = None
     analytics: Optional[Dict[str, Any]] = None
 

@@ -21,7 +21,7 @@ const AboutPage = () => {
             Saxton PI is the full-stack quant research cockpit from David Saxton.
           </h2>
           <p className="muted" style={{ marginTop: "0.8rem" }}>
-            I’m David Saxton, a full-stack engineer and aspiring quant who blends cybersecurity, market microstructure,
+            I’m David Saxton, a full-stack quant research engineer who blends cybersecurity, market microstructure,
             and portfolio analytics. Saxton PI is the product of the research, modeling, and infrastructure I rely on for
             disciplined investing.
           </p>
