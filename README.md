@@ -4,6 +4,9 @@ A modern React + FastAPI quantitative analytics platform for portfolio analysis,
 
 Built with a feature-based architecture, production-grade engineering patterns, and ready for local dev, Docker Compose, or cloud deployment (Vercel / Render).
 
+![Portfolio dashboard](docs/screenshots/dashboard.png)
+![Strategy research](docs/screenshots/strategy_research.png)
+
 🚀 Features
 Frontend — /client
 
@@ -137,6 +140,30 @@ Endpoint response shapes
 Frontend Tests (optional)
 
 Vitest + React Testing Library (when enabled)
+
+## Documentation & research
+
+- `docs/saxtonpi_overview.md`: covers Saxton PI’s problems (portfolio analysis, risk stats, tax harvest, backtesting), walks through the realistic SMA/RSI strategy (signal-on-close, trade-next-open, integer shares, slippage, commission), and links to the annotated strategy screenshot.  
+- `docs/design_decisions.md`: production notes on the FastAPI + React choice, feature-based frontend structure, CORS/env var handling, known limitations, and future extensions.  
+- `docs/architecture.svg`: visual overview of Frontend → FastAPI → Analytics Engine → Data/Cache plus the detailed backtest pipeline (data → signals → trades → equity → metrics).  
+- `docs/screenshots/dashboard.png`, `strategy_research.png`, and `tax_harvest.png`: quick hero + analytics screenshots to show what the platform looks like in action.
+
+## Sample data & demo setups
+
+- `sample_data/spy_sample.csv`: trimmed SPY history for offline demos or notebook playback.  
+- `sample_data/portfolio_positions.csv`: an example holdings file (AAPL, MSFT, VTI, etc.) for uploading and tax-harvest exploration.  
+- `demo/strategy_config.json`: the SPY SMA/RSI configuration used in the docs/screenshots.  
+- `demo/portfolio.json`: a small multi-asset portfolio for PM walkthroughs and tax-harvest analysis.
+
+## Research notebook
+
+- `notebooks/strategy_walkthrough.ipynb` drives a parameter sweep (SMA fast/slow grid), renders a Sharpe heatmap, and interrogates one corner (fast=10, slow=200) using the `run_quant_backtest` helper from the backend.
+
+## Testing & continuous integration
+
+- Backend pytest suite (e.g., `backend/app/tests/test_backtest_buy_and_hold_matches_benchmark.py`, `test_backtest_flat_strategy_keeps_equity_constant.py`, `test_drawdown_matches_hand_calculation.py`) validates the equity curve, drawdowns, and benchmark tracking math.  
+- Frontend Vitest check in `client/src/services/__tests__/apiClient.test.ts` ensures `resolveApiBase` honors `VITE_API_BASE_URL`.  
+- `.github/workflows/ci.yml` installs backend requirements, runs `pytest`, and then installs/builds the React client so every push validates both stacks.  
 
 📦 Deployment
 

@@ -1,0 +1,21 @@
+{
+  "strategy": {
+    "symbol": "SPY",
+    "timeframe": "1D",
+    "start_date": "2023-01-01",
+    "end_date": "2025-01-01",
+    "initial_capital": 100000,
+    "position_mode": "long_flat",
+    "sma_fast": 10,
+    "sma_slow": 50,
+    "rsi_period": 14,
+    "rsi_overbought": 70,
+    "rsi_oversold": 30,
+    "use_sma": true,
+    "use_rsi": true
+  },
+  "slippage_bps": 0.5,
+  "commission_per_trade": 0,
+  "max_position_size": 1,
+  "benchmark": "SPY"
+}

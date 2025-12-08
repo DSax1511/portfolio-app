@@ -1,0 +1,13 @@
+{
+  "title": "Multi-Asset Core",
+  "positions": [
+    {"symbol": "VTI", "quantity": 120, "avg_cost": 210},
+    {"symbol": "VOO", "quantity": 60, "avg_cost": 520},
+    {"symbol": "BND", "quantity": 80, "avg_cost": 78},
+    {"symbol": "VNQ", "quantity": 40, "avg_cost": 85}
+  ],
+  "metadata": {
+    "as_of": "2025-01-15",
+    "value": 120000
+  }
+}
