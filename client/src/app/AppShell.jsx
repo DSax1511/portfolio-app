@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import "../App.css";
@@ -22,91 +22,65 @@ import StrategyBuilderPage from "../features/quant/StrategyBuilderPage";
 import PortfolioLabPage from "../pages/PortfolioLabPage";
 import AdvancedBacktestPage from "../pages/AdvancedBacktestPage";
 import RiskLabPage from "../pages/RiskLabPage";
-import LiveTradingPage from "../pages/LiveTradingPage";
 import { PortfolioAnalyticsProvider, usePortfolioAnalytics } from "../state/portfolioAnalytics";
 import { QuantLabProvider } from "../state/quantLabStore";
 import { ActiveRunProvider } from "../state/activeRun";
 
 const DEMO_PORTFOLIOS = [
   {
-    id: "us_large_cap_quality_tech",
-    name: "US Large-Cap Core (Tech & Quality Tilt)",
-    description:
-      "Concentrated US large-cap portfolio overweighting quality and tech names vs the S&P 500.",
+    id: "core_growth_intel",
+    name: "Core Growth & Global Equity",
+    description: "High-conviction US + global equity sleeve with growth and quality exposure.",
     holdings: [
-      { symbol: "AAPL", weight: 0.13 },
-      { symbol: "MSFT", weight: 0.13 },
-      { symbol: "GOOGL", weight: 0.08 },
-      { symbol: "AMZN", weight: 0.08 },
-      { symbol: "NVDA", weight: 0.07 },
-      { symbol: "META", weight: 0.06 },
-      { symbol: "BRK.B", weight: 0.08 },
-      { symbol: "JPM", weight: 0.06 },
-      { symbol: "UNH", weight: 0.06 },
-      { symbol: "JNJ", weight: 0.05 },
-      { symbol: "XOM", weight: 0.08 },
-      { symbol: "HD", weight: 0.12 },
-    ],
-  },
-  {
-    id: "global_60_40_multi_asset",
-    name: "Global 60/40 Multi-Asset",
-    description:
-      "Global equity and fixed-income portfolio with US, international, EM, credit, TIPS, and REITs.",
-    holdings: [
-      { symbol: "VTI", weight: 0.3 },
-      { symbol: "VOO", weight: 0.1 },
-      { symbol: "VXUS", weight: 0.15 },
-      { symbol: "VWO", weight: 0.05 },
-      { symbol: "BND", weight: 0.25 },
-      { symbol: "HYG", weight: 0.05 },
-      { symbol: "TIP", weight: 0.05 },
+      { symbol: "SPY", weight: 0.28 },
+      { symbol: "QQQ", weight: 0.18 },
+      { symbol: "VTI", weight: 0.12 },
+      { symbol: "EFA", weight: 0.11 },
+      { symbol: "IWM", weight: 0.08 },
       { symbol: "VNQ", weight: 0.05 },
+      { symbol: "AGG", weight: 0.12 },
+      { symbol: "GLD", weight: 0.06 },
     ],
   },
   {
-    id: "all_weather_risk_parity_style",
-    name: "All-Weather / Risk-Parity Style",
-    description: "All-weather style allocation balancing equities, duration, and real assets.",
+    id: "global_modern_income",
+    name: "Global Income & Diversified Fixed Income",
+    description: "Blends Treasuries, corporate credit, and income-oriented equities for real-world resiliency.",
     holdings: [
-      { symbol: "VTI", weight: 0.25 },
-      { symbol: "IEF", weight: 0.2 },
-      { symbol: "TLT", weight: 0.25 },
+      { symbol: "AGG", weight: 0.35 },
+      { symbol: "LQD", weight: 0.2 },
+      { symbol: "VNQ", weight: 0.1 },
+      { symbol: "VFIFX", weight: 0.05 },
+      { symbol: "MINT", weight: 0.1 },
+      { symbol: "IEFA", weight: 0.15 },
+      { symbol: "QQQ", weight: 0.05 },
+    ],
+  },
+  {
+    id: "systematic_momentum",
+    name: "Systematic Momentum Tilt",
+    description: "Modern momentum blend focused on tech, innovation, and adaptive weighting.",
+    holdings: [
+      { symbol: "MTUM", weight: 0.3 },
+      { symbol: "QQQ", weight: 0.2 },
+      { symbol: "SPYG", weight: 0.15 },
+      { symbol: "IWM", weight: 0.1 },
+      { symbol: "XLC", weight: 0.1 },
+      { symbol: "XLK", weight: 0.05 },
       { symbol: "SHY", weight: 0.1 },
-      { symbol: "GLD", weight: 0.1 },
-      { symbol: "DBC", weight: 0.1 },
     ],
   },
   {
-    id: "defensive_low_vol_dividend",
-    name: "Defensive Low-Vol / Dividend",
-    description: "Low-volatility and dividend tilt with a meaningful bond sleeve.",
+    id: "sustainable_global",
+    name: "Sustainable Global Equity",
+    description: "Broad ESG-forward allocation spanning developed and emerging markets.",
     holdings: [
-      { symbol: "USMV", weight: 0.3 },
-      { symbol: "SPLV", weight: 0.15 },
-      { symbol: "VIG", weight: 0.2 },
-      { symbol: "XLU", weight: 0.1 },
-      { symbol: "XLV", weight: 0.1 },
-      { symbol: "BND", weight: 0.1 },
-      { symbol: "SHY", weight: 0.05 },
-    ],
-  },
-  {
-    id: "sector_rotation_book",
-    name: "US Sector Rotation Book",
-    description:
-      "Sector-tilted portfolio overweighting technology and cyclicals, underweighting defensives.",
-    holdings: [
-      { symbol: "XLY", weight: 0.12 },
-      { symbol: "XLP", weight: 0.08 },
-      { symbol: "XLE", weight: 0.1 },
-      { symbol: "XLF", weight: 0.1 },
-      { symbol: "XLV", weight: 0.12 },
-      { symbol: "XLI", weight: 0.1 },
-      { symbol: "XLK", weight: 0.18 },
-      { symbol: "XLU", weight: 0.08 },
-      { symbol: "XLB", weight: 0.07 },
-      { symbol: "IYR", weight: 0.05 },
+      { symbol: "ESGU", weight: 0.25 },
+      { symbol: "VEA", weight: 0.2 },
+      { symbol: "VWO", weight: 0.15 },
+      { symbol: "SPYX", weight: 0.1 },
+      { symbol: "QQQ", weight: 0.1 },
+      { symbol: "AGG", weight: 0.2 },
     ],
   },
   {
@@ -333,6 +307,20 @@ const AppContent = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isPortfolioRoute = location.pathname.startsWith("/pm");
+  const [isCompactViewport, setIsCompactViewport] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 900 : false
+  );
+  const [mobileNoticeDismissed, setMobileNoticeDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleResize = () => {
+      setIsCompactViewport(window.innerWidth < 900);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (demoNotionalsRef.current === null) {
     demoNotionalsRef.current = DEMO_PORTFOLIOS.reduce((acc, demo) => {
@@ -416,17 +404,18 @@ const AppContent = () => {
 
   const breadcrumb = (() => {
     const path = location.pathname || "";
-    if (path.startsWith("/pm/dashboard")) return "Portfolio Management → Dashboard";
-    if (path.startsWith("/pm/allocation")) return "Portfolio Management → Allocation & Rebalance";
-    if (path.startsWith("/pm/historical")) return "Portfolio Management → Historical Analysis";
-    if (path.startsWith("/pm/risk")) return "Portfolio Management → Risk & Diagnostics";
-    if (path.startsWith("/pm/tax-harvest")) return "Portfolio Management → Tax Harvest";
-    if (path.startsWith("/quant/strategy")) return "Quant → Strategy Research";
-    if (path.startsWith("/quant/market-structure")) return "Quant → Market Structure";
-    if (path.startsWith("/quant/regimes")) return "Quant → Regimes";
-    if (path.startsWith("/quant/execution")) return "Quant → Execution Lab";
-    return "Home";
+    if (path.startsWith("/home")) return "Home";
+    if (path.startsWith("/pm/dashboard")) return "Portfolio Dashboard";
+    if (path.startsWith("/overview")) return "Portfolio Overview";
+    if (path.startsWith("/pm/risk-diagnostics") || path.startsWith("/analytics")) return "Analytics";
+    if (path.startsWith("/quant/strategy-research")) return "Strategy Research";
+    if (path.startsWith("/pm/tax-harvest")) return "Tax Harvest";
+    if (path.startsWith("/about")) return "About";
+    if (path.startsWith("/contact")) return "Contact";
+    if (path.startsWith("/math-engine")) return "Mathematical Engine";
+    return "Saxton PI";
   })();
+  const showMobileNotice = isCompactViewport && !mobileNoticeDismissed;
 
   return (
     <div className="app-shell">
@@ -501,7 +490,6 @@ const AppContent = () => {
               <Route path="/phase3/portfolio-lab" element={<PortfolioLabPage />} />
               <Route path="/phase3/advanced-backtest" element={<AdvancedBacktestPage />} />
               <Route path="/phase3/risk-lab" element={<RiskLabPage />} />
-              <Route path="/phase3/live-trading" element={<LiveTradingPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/math-engine" element={<MathEnginePage />} />
@@ -515,6 +503,26 @@ const AppContent = () => {
           </PageLayout>
         </main>
       </div>
+      {showMobileNotice && (
+        <div className="mobile-warning-overlay">
+          <div className="mobile-warning-overlay__panel">
+            <p className="label-sm">Desktop preferred</p>
+            <h2 className="section-title" style={{ marginBottom: "8px" }}>
+              Saxton PI is optimized for larger screens
+            </h2>
+            <p className="muted">
+              The interface is designed for laptops and external monitors. For the best experience, please revisit Saxton PI on a desktop browser.
+            </p>
+            <button
+              className="btn btn-primary"
+              onClick={() => setMobileNoticeDismissed(true)}
+              style={{ marginTop: "1rem" }}
+            >
+              I prefer a desktop
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

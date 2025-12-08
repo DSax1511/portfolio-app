@@ -1,32 +1,20 @@
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
-import SectionHeader from "../../components/layout/SectionHeader";
 
 const ContactPage = () => {
   return (
     <PageShell
-      title="Contact Me"
-      subtitle="I’m an entry-level cybersecurity-focused computer science student with experience in vulnerability management, quantitative modeling, and building fintech tools. Feel free to reach out."
+      title="Contact"
+      subtitle="Open to conversations on quantitative finance, product, or engineering roles."
     >
       <div className="about-container">
-        <SectionHeader
-          overline="Portfolio Intelligence"
-          title="Contact"
-          subtitle="Reach out for opportunities across quantitative finance, cybersecurity, or software engineering."
-        />
-        <Card title="Contact Details" subtitle="Reach out directly">
+        <Card title="Contact details" subtitle="Reach out directly">
           <div className="simple-grid">
             <div>
-              <p className="metric-label">Name</p>
-              <p className="page-subtitle">David Saxton</p>
-            </div>
-            <div>
-              <p className="metric-label">Phone</p>
-              <a className="page-subtitle" href="tel:+13392260947">(339) 226-0947</a>
-            </div>
-            <div>
               <p className="metric-label">Email</p>
-              <a className="page-subtitle" href="mailto:Dfsaxton06@gmail.com">Dfsaxton06@gmail.com</a>
+              <a className="page-subtitle" href="mailto:Dfsaxton06@gmail.com">
+                Dfsaxton06@gmail.com
+              </a>
             </div>
             <div>
               <p className="metric-label">LinkedIn</p>
@@ -36,24 +24,34 @@ const ContactPage = () => {
                 target="_blank"
                 rel="noreferrer"
               >
-                www.linkedin.com/in/davidsaxton06
+                linkedin.com/in/davidsaxton06
               </a>
+            </div>
+            <div>
+              <p className="metric-label">Availability</p>
+              <p className="muted">Available for consulting, product, or engineering collaborations.</p>
             </div>
           </div>
         </Card>
 
-        <Card title="Quick message" subtitle="Opportunities welcome">
+        <Card title="Let’s connect" subtitle="Schedule a note">
           <p className="muted">
-            You can also reach me via email for opportunities related to quantitative finance, cybersecurity, or software engineering.
+            I’m happy to share more about Saxton PI, dive into the quant engine, or talk through your next project. 
+            Send a note and I’ll respond within one business day.
           </p>
-          <button
-            className="btn btn-primary"
-            onClick={() =>
-              window.location.href = "mailto:Dfsaxton06@gmail.com?subject=Portfolio%20App%20Contact"
-            }
-          >
-            Email Me
-          </button>
+          <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <a className="btn btn-primary" href="mailto:Dfsaxton06@gmail.com?subject=SaxtonPI%20Contact">
+              Email me
+            </a>
+            <a
+              className="btn btn-ghost"
+              href="https://www.linkedin.com/in/davidsaxton06"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Message on LinkedIn
+            </a>
+          </div>
         </Card>
       </div>
     </PageShell>

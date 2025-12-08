@@ -2,144 +2,171 @@ import { Link } from "react-router-dom";
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 
+const featureCards = [
+  {
+    title: "Portfolio Dashboard",
+    description: "Equity curve, PnL, benchmark vs portfolio.",
+  },
+  {
+    title: "Risk & Analytics",
+    description: "Volatility, Sharpe/Sortino, drawdowns, correlation, and exposures.",
+  },
+  {
+    title: "Strategy Research",
+    description: "SMA/RSI backtests with realistic execution assumptions and trade logs.",
+  },
+  {
+    title: "Tax Harvesting",
+    description: "Identify harvestable losses, wash-sale flags, and estimated savings.",
+  },
+  {
+    title: "Full-Stack Engine",
+    description: "React + Vite frontend, FastAPI analytics backend, CI/CD, and Docker containers.",
+  },
+  {
+    title: "Research Artifacts",
+    description: "Notebooks, documentation, tests, and demo data for every insight.",
+  },
+];
+
+const architectureHighlights = [
+  {
+    title: "Frontend",
+    points: ["React + Vite", "Responsive layout with Recharts", "Design tokens for polish"],
+  },
+  {
+    title: "Backend",
+    points: ["FastAPI endpoints", "Portfolio analytics & backtests", "NumPy/Pandas math"],
+  },
+  {
+    title: "Ops",
+    points: ["Dockerized services", "CI/CD coverage", "Render & Vercel deployments"],
+  },
+];
+
+const quickLinks = [
+  { label: "LinkedIn", href: "https://www.linkedin.com/in/davidsaxton06" },
+  { label: "GitHub", href: "https://github.com/DSax1511" },
+  { label: "Resume", href: "/DavidSaxtonResume.pdf" },
+  { label: "Whitepaper", href: "/assets/SaxtonPI_Whitepaper_Final.pdf", external: true },
+];
+
 const HomePage = () => {
   return (
-    <PageShell
-      title="Portfolio Intelligence"
-      subtitle="End-to-end portfolio management and quant research platform built with Python, FastAPI, and React."
-    >
-      <div className="page-layout" style={{ gap: "1.25rem" }}>
-        <Card className="bg-slate-900/60 border border-slate-800">
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="label-sm">Portfolio Intelligence</p>
-              <h1 className="page-title" style={{ margin: 0 }}>
-                Platform overview
-              </h1>
-              <p className="page-subtitle" style={{ maxWidth: 780 }}>
-                End-to-end portfolio management and quant research platform built with Python, FastAPI, and React.
-              </p>
-            </div>
-            <ul className="simple-list" style={{ marginTop: 0 }}>
-              <li>Live portfolio analytics with allocation, risk, and rebalance engines</li>
-              <li>Quant Lab for backtesting, microstructure, and regime analysis</li>
-              <li>API-first FastAPI backend with React/Tailwind frontend, containerized with Docker</li>
-            </ul>
+    <PageShell hideHeader>
+      <div className="landing-hero">
+        <div className="landing-hero__copy">
+          <p className="label-sm">Saxton PI · Portfolio Intelligence</p>
+          <h1 className="landing-hero__title">Saxton PI · Portfolio Intelligence</h1>
+          <p className="landing-hero__subtitle">
+            A full-stack platform for portfolio analytics, risk diagnostics, backtesting, and tax-aware management.
+          </p>
+          <div className="landing-hero__actions">
+            <Link to="/pm/dashboard" className="btn btn-primary">
+              Launch Saxton PI
+            </Link>
+            <a
+              className="btn btn-ghost"
+              href="/assets/SaxtonPI_Whitepaper_Final.pdf"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Read the Whitepaper
+            </a>
+          </div>
+          <div className="landing-hero__notes">
+            <span>4 curated portfolios</span>
+            <span>Live benchmark comparison</span>
+            <span>Quant lab-ready</span>
+          </div>
+        </div>
+        <Card className="landing-hero__panel">
+          <p className="font-semibold text-slate-100">Platform confidence</p>
+          <ul className="simple-list" style={{ marginTop: 12 }}>
+            <li>Live portfolio & benchmark curves synchronized to one dashboard.</li>
+            <li>Risk diagnostics, drawdowns, and factor exposure in a single view.</li>
+            <li>Strategy Research channel with logs, metrics, and trade blotter.</li>
+          </ul>
+          <div className="landing-hero__panel-footer">
+            <span>Deploys via Vercel + Render</span>
+            <span>CI/CD + Docker</span>
           </div>
         </Card>
+      </div>
 
-        <Card className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-800/40">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div>
-              <p className="font-semibold text-slate-100">Powered by SaxtonPI Quant Engine</p>
-              <p className="muted" style={{ marginTop: "6px" }}>
-                Risk, factor models, portfolio optimization, and backtesting in Python (NumPy/Pandas), exposed via a FastAPI "Portfolio Quant API."
+      <section>
+        <div className="section-header">
+          <div>
+            <p className="label-sm">Core capabilities</p>
+            <h4 className="section-title">Quant-grade workflow</h4>
+          </div>
+        </div>
+        <div className="feature-grid">
+          {featureCards.map((feature) => (
+            <Card key={feature.title} className="feature-card">
+              <h3 className="card-title">{feature.title}</h3>
+              <p className="muted" style={{ marginTop: 4 }}>
+                {feature.description}
               </p>
-            </div>
-            <Link to="/math-engine" className="btn btn-primary" style={{ minWidth: "180px", textAlign: "center" }}>
-              View math & methods →
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-header">
+          <div>
+            <p className="label-sm">Technical architecture</p>
+            <h4 className="section-title">Built for analysts and PMs</h4>
+          </div>
+          <div className="section-actions">
+            <Link to="/quant/strategy-research" className="btn btn-ghost">
+              Visit Strategy Research
             </Link>
           </div>
+        </div>
+        <div className="architecture-grid">
+          {architectureHighlights.map((item) => (
+            <Card key={item.title} className="architecture-card">
+              <h3 className="card-title">{item.title}</h3>
+              <ul className="simple-list" style={{ marginTop: 8 }}>
+                {item.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-header">
+          <div>
+            <p className="label-sm">Research & contact</p>
+            <h4 className="section-title">Connect with the builder</h4>
+          </div>
+        </div>
+        <Card className="landing-bio-card">
+          <p className="muted">
+            I’m David Saxton, a full-stack engineer and aspiring quant focused on cybersecurity, market microstructure,
+            and portfolio analytics. Saxton PI is the product of end-to-end tooling that combines probabilistic backtests
+            with intuitive dashboards.
+          </p>
+          <div className="landing-bio-card__links">
+            {quickLinks.map((link) => (
+              <a
+                key={link.label}
+                className="btn btn-ghost"
+                href={link.href}
+                target={link.external ? "_blank" : "_self"}
+                rel={link.external ? "noreferrer" : undefined}
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
         </Card>
-
-        <div>
-          <div className="section-header">
-            <div>
-              <p className="label-sm">How to use the platform</p>
-              <h2 className="section-title">Workspaces</h2>
-            </div>
-          </div>
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="font-semibold text-slate-100">Portfolio Management workspace</p>
-              <p className="muted">
-                Monitor live portfolio value, P&L, exposures, and drift. Use the left sidebar to open “Portfolio Dashboard”, “Allocation &
-                Rebalance”, and “Risk & Diagnostics” for rebalances, trades, and risk analysis. Navigation stays in the sidebar; Home is an
-                overview only.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-100">Quant Lab workspace</p>
-              <p className="muted">
-                Build and backtest strategies, study market microstructure, and explore regimes. Open “Strategy Research”, “Market
-                Structure”, “Regimes”, or “Execution Lab” from the left menu to run experiments and view analytics.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-100">Research & notes</p>
-              <p className="muted">
-                Use the Research section in the sidebar to centralize experiment notes and findings. Home provides context; navigation
-                happens via the left-hand menu.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="section-header">
-            <div>
-              <p className="label-sm">Example demo workflows</p>
-              <h2 className="section-title">Step-by-step</h2>
-            </div>
-          </div>
-          <div className="flex flex-col gap-3">
-            <Card className="bg-slate-900/60 border border-slate-800">
-              <p className="font-semibold text-slate-100">Demo 1 — Portfolio Management: long-only equity portfolio</p>
-              <ol className="simple-list" style={{ marginTop: "8px" }}>
-                <li>Turn on demo mode using the toggle in the top bar.</li>
-                <li>Open “Portfolio Dashboard” from the sidebar to review live P&L, exposures, and concentration.</li>
-                <li>Go to “Allocation & Rebalance” to inspect drift and suggested trades.</li>
-                <li>Check “Risk & Diagnostics” for drawdowns, volatility, and rolling stats.</li>
-              </ol>
-            </Card>
-            <Card className="bg-slate-900/60 border border-slate-800">
-              <p className="font-semibold text-slate-100">Demo 2 — Quant Lab: strategy backtest</p>
-              <ol className="simple-list" style={{ marginTop: "8px" }}>
-                <li>Enable demo mode.</li>
-                <li>Open “Strategy Research” in the Quant Lab section of the sidebar.</li>
-                <li>Run the preconfigured demo strategy (simple factor tilt on SPY with transaction costs).</li>
-                <li>Review the equity vs benchmark chart and risk metrics on the page.</li>
-                <li>Optionally explore “Market Structure” and “Regimes” for the same symbol.</li>
-              </ol>
-            </Card>
-          </div>
-        </div>
-
-        <div>
-          <div className="section-header">
-            <div>
-              <p className="label-sm">Architecture</p>
-              <h2 className="section-title">Architecture at a glance</h2>
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Card>
-              <p className="font-semibold text-slate-100">Backend</p>
-              <ul className="simple-list" style={{ marginTop: "6px" }}>
-                <li>FastAPI, Python analytics modules</li>
-                <li>Backtests, risk, microstructure, regimes</li>
-                <li>Caching via parquet</li>
-              </ul>
-            </Card>
-            <Card>
-              <p className="font-semibold text-slate-100">Frontend</p>
-              <ul className="simple-list" style={{ marginTop: "6px" }}>
-                <li>React, TypeScript, Tailwind</li>
-                <li>Recharts for analytics visuals</li>
-                <li>Shared UI primitives for cards, shells</li>
-              </ul>
-            </Card>
-            <Card>
-              <p className="font-semibold text-slate-100">Infra</p>
-              <ul className="simple-list" style={{ marginTop: "6px" }}>
-                <li>Dockerized services</li>
-                <li>Local dev via Vite + uvicorn</li>
-                <li>Configurable via env vars</li>
-              </ul>
-            </Card>
-          </div>
-        </div>
-      </div>
+      </section>
     </PageShell>
   );
 };

@@ -4,27 +4,32 @@ import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
 import ExperimentHistory from "../../components/ui/ExperimentHistory";
 import ErrorBanner from "../../components/ui/ErrorBanner";
+import MetricCard from "../../components/ui/MetricCard";
 import { useQuantLabStore } from "../../state/quantLabStore";
 import { useActiveRun } from "../../state/activeRun";
 import { formatDateTick } from "../../utils/format";
 
+const today = new Date();
+const defaultEndDate = today.toISOString().slice(0, 10);
+const defaultStartDate = new Date(today);
+defaultStartDate.setFullYear(defaultStartDate.getFullYear() - 5);
 const defaultConfig = {
   symbol: "SPY",
   timeframe: "1D",
-  start_date: "2020-01-01",
-  end_date: new Date().toISOString().slice(0, 10),
-  initial_capital: 100000,
+  start_date: defaultStartDate.toISOString().slice(0, 10),
+  end_date: defaultEndDate,
+  initial_capital: 150000,
   position_mode: "long_flat",
-  sma_fast: 10,
-  sma_slow: 30,
+  sma_fast: 50,
+  sma_slow: 200,
   rsi_period: 14,
   rsi_overbought: 70,
   rsi_oversold: 30,
   use_sma: true,
-  use_rsi: false,
+  use_rsi: true,
   slippage_bps: 0.5,
   commission_per_trade: 0,
-  max_position_size: 1,
+  max_position_size: 0.25,
   benchmark: "SPY",
 };
 
@@ -32,6 +37,27 @@ const metric = (v, pct = false) => {
   if (v === null || v === undefined) return "—";
   return pct ? `${(v * 100).toFixed(2)}%` : v.toFixed(2);
 };
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+const percentFormatter = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+const formatCurrency = (value) =>
+  typeof value === "number" ? currencyFormatter.format(value) : "—";
+
+const formatPercentValue = (value) =>
+  typeof value === "number" ? percentFormatter.format(value) : "—";
+
+const formatShares = (value) =>
+  typeof value === "number" ? Math.round(value).toLocaleString() : "—";
 
 const StrategyBuilderPage = () => {
   const [config, setConfig] = useState(defaultConfig);
@@ -128,13 +154,52 @@ const StrategyBuilderPage = () => {
     }));
   }, [result]);
 
+  const summary = result?.summary;
+  const trades = result?.trades || [];
+  const summaryMetrics = summary
+    ? [
+        { label: "CAGR", value: formatPercentValue(summary.cagr), helper: "Annualized return" },
+        { label: "Volatility", value: formatPercentValue(summary.annualized_volatility), helper: "Annualized vol" },
+        { label: "Sharpe", value: metric(summary.sharpe_ratio), helper: "Risk-adjusted" },
+        { label: "Sortino", value: metric(summary.sortino_ratio), helper: "Downside risk" },
+        {
+          label: "Max Drawdown",
+          value: formatPercentValue(summary.max_drawdown),
+          helper: "Worst peak-to-trough",
+          accent: "red",
+        },
+        { label: "Alpha", value: metric(summary.alpha), helper: "vs benchmark" },
+        { label: "Beta", value: metric(summary.beta), helper: "vs benchmark" },
+        {
+          label: "Win Rate",
+          value: formatPercentValue(summary.win_rate),
+          helper: "Winning trades",
+          accent: "green",
+        },
+        { label: "Trades", value: `${trades.length}`, helper: "Total executions" },
+      ]
+    : [];
+
+  const exportTrades = () => {
+    if (!trades.length) return;
+    const header = ["timestamp", "side", "size", "price", "pnl"];
+    const csv = [header.join(","), ...trades.map((t) => [t.timestamp, t.side, t.size, t.price, t.pnl].join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "strategy_trades.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <PageShell
       title="Quant Lab – Strategy Research"
       subtitle="Design and backtest trading strategies with configurable parameters."
     >
-      <div className="analytics-grid" style={{ gridTemplateColumns: "1.1fr 1.2fr" }}>
-        <Card title="Strategy configuration" subtitle="Define symbol, logic, and execution settings">
+      <div className="strategy-top-grid">
+        <Card title="Strategy configuration" subtitle="Define symbol, logic, and execution settings" className="strategy-config-card">
           <form className="analytics-form" onSubmit={runBacktest}>
             <div className="form-row">
               <label>
@@ -257,7 +322,7 @@ const StrategyBuilderPage = () => {
           />
         </Card>
 
-        <Card title="Strategy results" subtitle="Performance vs benchmark" className="chart-card">
+        <Card title="Strategy results" subtitle="Performance vs benchmark" className="strategy-chart-card">
           {isLoading && <p className="muted">Running backtest...</p>}
           {errMsg && <p className="error-text">{errMsg}</p>}
           {result ? (
@@ -317,42 +382,36 @@ const StrategyBuilderPage = () => {
         </Card>
       )}
 
-      {result && mode === "single" && (
-        <div className="analytics-grid">
-          <Card title="Summary stats" subtitle="PM-style metrics">
-            <div className="stats-grid">
-              <div className="stat-box"><p className="metric-label">CAGR</p><div className="metric-value">{metric(result.summary.cagr, true)}</div></div>
-              <div className="stat-box"><p className="metric-label">Vol</p><div className="metric-value">{metric(result.summary.annualized_volatility, true)}</div></div>
-              <div className="stat-box"><p className="metric-label">Sharpe</p><div className="metric-value">{metric(result.summary.sharpe_ratio)}</div></div>
-              <div className="stat-box"><p className="metric-label">Sortino</p><div className="metric-value">{metric(result.summary.sortino_ratio)}</div></div>
-              <div className="stat-box"><p className="metric-label">Max DD</p><div className="metric-value">{metric(result.summary.max_drawdown, true)}</div></div>
-              <div className="stat-box"><p className="metric-label">Alpha</p><div className="metric-value">{metric(result.summary.alpha)}</div></div>
-              <div className="stat-box"><p className="metric-label">Beta</p><div className="metric-value">{metric(result.summary.beta)}</div></div>
-              <div className="stat-box"><p className="metric-label">Win rate</p><div className="metric-value">{metric(result.summary.win_rate, true)}</div></div>
+      {mode === "single" && (
+        <>
+          {summaryMetrics.length > 0 ? (
+            <div className="strategy-metrics-grid">
+              {summaryMetrics.map((metricDefinition) => (
+                <MetricCard
+                  key={metricDefinition.label}
+                  label={metricDefinition.label}
+                  value={metricDefinition.value}
+                  helper={metricDefinition.helper}
+                  accent={metricDefinition.accent}
+                />
+              ))}
             </div>
-          </Card>
-          <Card title="Trades" subtitle="Execution log">
-            {result?.trades?.length ? (
+          ) : (
+            <Card className="strategy-empty-card">
+              <p className="muted" style={{ margin: 0 }}>
+                Run a backtest to surface strategy metrics.
+              </p>
+            </Card>
+          )}
+          <Card title="Trade blotter" subtitle="Execution log" className="strategy-trades-card">
+            {trades.length > 0 ? (
               <div className="flex justify-end mb-2">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    const header = ["timestamp", "side", "size", "price", "pnl"];
-                    const csv = [header.join(","), ...result.trades.map((t) => [t.timestamp, t.side, t.size, t.price, t.pnl].join(","))].join("\n");
-                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement("a");
-                    link.href = url;
-                    link.download = "strategy_trades.csv";
-                    link.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
+                <button className="btn btn-ghost" onClick={exportTrades}>
                   Export trades
                 </button>
               </div>
             ) : null}
-            <div className="table-wrapper compact-table dense">
+            <div className="table-wrapper compact-table dense strategy-table">
               <table>
                 <thead>
                   <tr>
@@ -364,24 +423,30 @@ const StrategyBuilderPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.trades && result.trades.length ? (
-                    result.trades.map((t, idx) => (
-                      <tr key={idx}>
+                  {trades.length ? (
+                    trades.map((t, idx) => (
+                      <tr key={`${t.timestamp}-${idx}`}>
                         <td>{t.timestamp}</td>
                         <td>{t.side}</td>
-                        <td className="numeric">{t.size.toFixed(2)}</td>
-                        <td className="numeric">{t.price.toFixed(2)}</td>
-                        <td className={`numeric ${t.pnl >= 0 ? "positive" : "negative"}`}>{t.pnl.toFixed(2)}</td>
+                        <td className="numeric">{formatShares(t.size)}</td>
+                        <td className="numeric">{formatCurrency(t.price)}</td>
+                        <td className={`numeric ${t.pnl >= 0 ? "positive" : "negative"}`}>
+                          {formatCurrency(t.pnl)}
+                        </td>
                       </tr>
                     ))
                   ) : (
-                    <tr><td colSpan={5} className="muted">No trades generated.</td></tr>
+                    <tr>
+                      <td colSpan={5} className="muted">
+                        No trades generated. Run a backtest to populate the blotter.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
             </div>
           </Card>
-        </div>
+        </>
       )}
     </PageShell>
   );

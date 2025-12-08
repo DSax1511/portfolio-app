@@ -1,158 +1,84 @@
 import Card from "../../components/ui/Card";
 import PageShell from "../../components/ui/PageShell";
-import SectionHeader from "../../components/layout/SectionHeader";
+
+const quickLinks = [
+  { label: "LinkedIn", href: "https://www.linkedin.com/in/davidsaxton06", external: true },
+  { label: "GitHub", href: "https://github.com/DSax1511", external: true },
+  { label: "Resume", href: "/DavidSaxtonResume.pdf" },
+  { label: "Whitepaper", href: "/assets/SaxtonPI_Whitepaper_Final.pdf", external: true },
+];
 
 const AboutPage = () => {
   return (
     <PageShell
-      title="About this Project"
-      subtitle="This application is a portfolio analytics and quantitative research tool designed to build, analyze, and stress-test investment strategies."
+      title="About Saxton PI"
+      subtitle="A full-stack quant research and portfolio intelligence platform built for disciplined investors."
     >
       <div className="about-container">
-        <div className="about-hero">
-          <SectionHeader
-            overline="Portfolio Intelligence"
-            title="About this Project"
-            subtitle="This application is a portfolio analytics and quantitative research tool designed to build, analyze, and stress-test investment strategies."
-          />
-        </div>
-
-        <Card title="Project links" subtitle="Resources">
-          <div className="flex flex-wrap gap-3 mt-2">
-            <a className="btn btn-ghost" href="https://github.com/DSax1511">
-              View GitHub
-            </a>
-            <a className="btn btn-ghost" href="/resume.pdf">
-              Download Resume
-            </a>
-            <a className="btn btn-ghost" href="/whitepaper.pdf">
-              Read Project Whitepaper
-            </a>
+        <Card className="about-hero-card">
+          <p className="label-sm">Saxton PI · Portfolio Intelligence</p>
+          <h2 className="section-title" style={{ margin: "0.3rem 0 0" }}>
+            Saxton PI is the full-stack quant research cockpit from David Saxton.
+          </h2>
+          <p className="muted" style={{ marginTop: "0.8rem" }}>
+            I’m David Saxton, a full-stack engineer and aspiring quant who blends cybersecurity, market microstructure,
+            and portfolio analytics. Saxton PI is the product of the research, modeling, and infrastructure I rely on for
+            disciplined investing.
+          </p>
+          <div className="about-links" style={{ marginTop: "1rem" }}>
+            {quickLinks.map((link) => (
+              <a
+                key={link.label}
+                className="btn btn-ghost"
+                href={link.href}
+                target={link.external ? "_blank" : "_self"}
+                rel={link.external ? "noreferrer" : undefined}
+              >
+                {link.label}
+              </a>
+            ))}
           </div>
         </Card>
 
         <div className="about-grid">
-          <Card title="What this app does" subtitle="Feature set">
+          <Card title="What this app delivers" subtitle="Institutional workflows">
             <ul className="simple-list">
-              <li>Upload or define portfolios and view performance, risk, and allocation breakdowns.</li>
-              <li>Run portfolio analytics including returns, volatility, drawdowns, Sharpe/Sortino, and hit rates.</li>
-              <li>Compare portfolios against benchmarks and analyze rolling stats, beta, and relative performance.</li>
-              <li>Construct efficient frontiers and backtests, including strategy builder outputs.</li>
-              <li>Perform position sizing and rebalancing simulations with suggested trades.</li>
-              <li>Explore Monte Carlo stress tests, scenario shocks, and factor/risk breakdowns.</li>
+              <li>Live dashboard with exposures, equity curves, and benchmark deltas.</li>
+              <li>Risk diagnostics including drawdowns, volatility, beta, and factor decomposition.</li>
+              <li>Quant Lab with configurable SMA/RSI backtests, trades, metrics, and sweeps.</li>
+              <li>Tax-loss harvesting with recommended lots and wash-sale awareness.</li>
+              <li>Operational readiness with CI/CD, Docker, and documented math.</li>
             </ul>
           </Card>
 
-          <Card title="Why I Built This" subtitle="Personal background">
-            <p className="muted">
-              I started investing early and grew fascinated by technical analysis, portfolio construction, and market mechanics. The retail tools I used often lacked transparency or flexibility.
-            </p>
-            <p className="muted">
-              Studying computer science pulled me toward fintech, where I could merge engineering with real investment logic. This project bridges those two worlds.
-            </p>
-            <p className="muted">
-              I built it as a tool I rely on for research and portfolio decisions—implementing the quantitative concepts myself instead of relying on opaque platforms.
-            </p>
-          </Card>
-        </div>
-
-        <div className="about-grid">
-          <Card title="How it was built" subtitle="Architecture & stack">
-            <div className="simple-grid">
-              <div>
-                <p className="metric-label">Frontend</p>
-                <ul className="simple-list">
-                  <li>React + Vite (JavaScript) with shared UI primitives and Recharts for visualization.</li>
-                  <li>Routing via React Router; feature folders for overview, analytics, and shared components.</li>
-                  <li>Dark theme tokens for spacing, typography, and elevations.</li>
-                </ul>
-              </div>
-              <div>
-                <p className="metric-label">Backend</p>
-                <ul className="simple-list">
-                  <li>FastAPI (Python) serving analytics endpoints: metrics, backtests, efficient frontier, benchmarks.</li>
-                  <li>Rebalancing and position sizing endpoints under /api/rebalance.</li>
-                  <li>Monte Carlo, stress tests, factor exposures, risk breakdowns, and benchmark analytics.</li>
-                </ul>
-              </div>
-              <div>
-                <p className="metric-label">Data layer</p>
-                <ul className="simple-list">
-                  <li>pandas and NumPy for return/volatility calculations and portfolio math.</li>
-                  <li>yfinance for market data retrieval inside backend utilities.</li>
-                  <li>pydantic models for request/response validation.</li>
-                </ul>
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Tools and technologies used" subtitle="Stack summary">
-            <div className="simple-grid">
-              <div>
-                <p className="metric-label">Languages</p>
-                <ul className="simple-list">
-                  <li>JavaScript (React)</li>
-                  <li>Python</li>
-                </ul>
-              </div>
-              <div>
-                <p className="metric-label">Frameworks</p>
-                <ul className="simple-list">
-                  <li>FastAPI</li>
-                  <li>React + Vite</li>
-                </ul>
-              </div>
-              <div>
-                <p className="metric-label">Libraries</p>
-                <ul className="simple-list">
-                  <li>pandas, NumPy, yfinance</li>
-                  <li>Recharts for charts</li>
-                  <li>pytest/hypothesis for testing</li>
-                </ul>
-              </div>
-              <div>
-                <p className="metric-label">Infrastructure & Dev</p>
-                <ul className="simple-list">
-                  <li>Dockerfiles for frontend/backend</li>
-                  <li>Uvicorn for serving FastAPI</li>
-                </ul>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <div className="about-grid">
-          <Card title="Financial formulas and quantitative methods" subtitle="Implemented concepts">
+          <Card title="Technical stack" subtitle="Reliable infra">
             <ul className="simple-list">
-              <li>Portfolio returns and equity curves (cumulative growth from price/portfolio value series).</li>
-              <li>Volatility (standard deviation of returns) with annualization.</li>
-              <li>Sharpe ratio and Sortino ratio using risk-free ~0% assumption.</li>
-              <li>Drawdowns and max drawdown from equity curves.</li>
-              <li>Rolling stats including beta, vol, and Sharpe vs benchmarks.</li>
-              <li>Efficient frontier optimization (return/vol trade-off, max Sharpe, min vol points).</li>
-              <li>Position sizing (risk-per-trade) and rebalancing suggestions.</li>
-              <li>Monte Carlo simulations and stress tests for shock scenarios.</li>
+              <li>Frontend: React + Vite, Recharts, feature-based architecture, shared cards/metric components.</li>
+              <li>Backend: FastAPI serving analytics, backtests, risk, and tax-harvest endpoints.</li>
+              <li>Testing: pytest/hypothesis for quant logic; Storybook-style UI primitives for consistency.</li>
+              <li>Deployment: Vercel (frontend) + Render or similar (backend) with env-driven toggles.</li>
             </ul>
           </Card>
 
-          <Card title="What this project demonstrates" subtitle="Skills and outcomes">
+          <Card title="Research artifacts" subtitle="Proof and process">
             <ul className="simple-list">
-              <li>End-to-end design and implementation of a full-stack quant web application.</li>
-              <li>Practical portfolio analytics, risk metrics, optimization, and scenario tooling.</li>
-              <li>Translating finance concepts into code and a usable interface.</li>
-              <li>Designing workflows that investors and PMs can realistically use.</li>
+              <li>Quant notebooks describing return, risk, and optimization math.</li>
+              <li>Backtest logs, trade blotters, and parameter sweeps.</li>
+              <li>Documentation covering architecture, data pipelines, and deployment.</li>
             </ul>
           </Card>
         </div>
 
-        <Card title="How to use this app" subtitle="Suggested workflow">
-          <ol className="simple-list">
-            <li>Upload a portfolio CSV or load the demo portfolio.</li>
-            <li>Review Overview for KPIs, sector exposure, and positions.</li>
-            <li>Go to Performance &amp; Risk for analytics, charts, and decomposition.</li>
-            <li>Run backtests/efficient frontier or stress tests from analytics panels.</li>
-            <li>Use position sizing and rebalance tools for trade planning.</li>
-          </ol>
+        <Card title="Connect" subtitle="Opportunities welcome">
+          <p className="muted">
+            I’m actively exploring collaborations across portfolio management, product, and engineering roles. Feel
+            free to reach out for discussions on quantitative finance, cybersecurity, or software engineering.
+          </p>
+          <div style={{ marginTop: "0.8rem" }}>
+            <a className="btn btn-primary" href="mailto:Dfsaxton06@gmail.com?subject=SaxtonPI%20Inquiry">
+              Email David
+            </a>
+          </div>
         </Card>
       </div>
     </PageShell>

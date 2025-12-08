@@ -1,19 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { portfolioApi } from "../../services/portfolioApi";
+import Card from "../../components/ui/Card";
+import PageShell from "../../components/ui/PageShell";
 import { usePortfolioAnalytics } from "../../state/portfolioAnalytics";
+import { portfolioApi } from "../../services/portfolioApi";
 import "./TaxHarvestPage.css";
 
 const formatCurrency = (value) =>
-  value.toLocaleString(undefined, {
+  value?.toLocaleString(undefined, {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
   });
 
-const formatPercent = (value) => `${(value * 100).toFixed(0)}%`;
+const formatPercent = (value) =>
+  value === undefined || value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+
+const formatQuantity = (value) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.round(value).toLocaleString()
+    : "—";
+
+const presets = ["1Y", "3Y", "5Y", "MAX"];
+const benchmarkOptions = ["SPY", "QQQ", "IWM", "ACWI"];
 
 const TaxHarvestPage = () => {
-  const { dateRange, benchmark } = usePortfolioAnalytics();
+  const { dateRange, setDateRange, benchmark, setBenchmark } = usePortfolioAnalytics();
   const [realizedGains, setRealizedGains] = useState(0);
   const [targetFraction, setTargetFraction] = useState(1);
   const [result, setResult] = useState(null);
@@ -72,52 +83,53 @@ const TaxHarvestPage = () => {
   };
 
   const summary = result?.summary;
-  const totals = result?.candidates?.length ?? 0;
-  const selected = result?.selected_candidates?.length ?? 0;
-
+  const totalLots = result?.candidates?.length ?? 0;
+  const selectedCount = result?.selected_candidates?.length ?? 0;
   const summaryCards = [
     {
       label: "Target loss to realize",
       value:
-        summary?.target_loss_to_realize && summary.target_loss_to_realize > 0
-          ? formatCurrency(-summary.target_loss_to_realize)
-          : "N/A",
+        summary?.target_loss_to_realize > 0 ? formatCurrency(-summary.target_loss_to_realize) : "—",
       meta: "Driver: realized gains buffer",
     },
     {
       label: "Max harvestable loss",
       value: summary ? formatCurrency(-summary.max_harvestable_loss) : "—",
-      meta: "Unrealized losses across lots",
+      meta: "Unrealized losses available",
     },
     {
       label: "Estimated tax savings",
       value: summary ? formatCurrency(summary.estimated_tax_savings) : "—",
-      meta:
-        summary && summary.marginal_tax_rate
-          ? `Assumes ${Math.round(summary.marginal_tax_rate * 100)}% marginal rate`
-          : "Margin rate pending",
+      meta: summary?.marginal_tax_rate
+        ? `Assumes ${Math.round(summary.marginal_tax_rate * 100)}% marginal rate`
+        : "Pending tax profile",
     },
     {
       label: "Lots selected",
-      value: `${selected}`,
-      meta: `out of ${totals} underwater lots`,
+      value: `${selectedCount}`,
+      meta: `out of ${totalLots} underwater lots`,
     },
   ];
 
-  const showEmpty = result && result.candidates?.length === 0;
+  const showEmptyState = !loading && result && totalLots === 0;
 
   return (
-    <div className="tax-harvest-page">
-      <div className="card tax-hero-card">
-        <div>
-          <h1>📉 Tax Harvest Opportunities</h1>
-          <p>
-            Automatically translate unrealized losses into real tax deductions. Adjust realized gains,
-            target exposure, and let Saxton PI recommend tax-lot harvests with wash-sale awareness.
-          </p>
+    <PageShell
+      title="Tax Harvest"
+      subtitle="Identify tax-aware trades and visualize harvestable losses with wash-sale awareness."
+    >
+      <div className="tax-harvest-header">
+        <div className="tax-summary-grid">
+          {summaryCards.map((card) => (
+            <div key={card.label} className="tax-summary-card">
+              <div className="tax-summary-label">{card.label}</div>
+              <div className="tax-summary-value">{card.value || "—"}</div>
+              <div className="tax-summary-meta">{card.meta}</div>
+            </div>
+          ))}
         </div>
-        <div className="tax-hero-controls">
-          <div className="hero-input">
+        <Card title="Harvest controls" className="tax-controls-card">
+          <div className="tax-control-row">
             <label>Realized gains to offset</label>
             <input
               type="number"
@@ -125,9 +137,9 @@ const TaxHarvestPage = () => {
               value={realizedGains}
               onChange={(evt) => handleGainsChange(evt.target.value)}
             />
-            <span className="hero-input-hint">Use your ledger or gain reports</span>
+            <span className="muted">Use your ledger or gain reports.</span>
           </div>
-          <div className="hero-input">
+          <div className="tax-control-row">
             <label>Target % of realized gains</label>
             <div className="tax-slider">
               <input
@@ -141,87 +153,105 @@ const TaxHarvestPage = () => {
               <span>{formatPercent(targetFraction)}</span>
             </div>
           </div>
-        </div>
+          <div className="tax-control-row">
+            <p className="label-sm" style={{ marginBottom: 6 }}>
+              Date range
+            </p>
+            <div className="tax-presets">
+              {presets.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className={`btn btn-ghost${dateRange.preset === preset ? " btn-primary" : ""}`}
+                  onClick={() => setDateRange({ preset, startDate: null, endDate: null })}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tax-control-row">
+            <label>Benchmark</label>
+            <select value={benchmark} onChange={(evt) => setBenchmark(evt.target.value)}>
+              {benchmarkOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Card>
       </div>
 
-      {error && <div className="tax-error-text">{error}</div>}
-      {loading && <div className="tax-loading">Computing opportunities…</div>}
+      {error && <div className="tax-status-banner tax-error">{error}</div>}
+      {loading && <div className="tax-status-banner">Computing opportunities…</div>}
 
-      {!loading && result && (
-        <>
-          <div className="tax-summary-grid">
-            {summaryCards.map((card) => (
-              <div key={card.label} className="tax-summary-card">
-                <div className="tax-summary-label">{card.label}</div>
-                <div className="tax-summary-value">{card.value}</div>
-                <div className="tax-summary-meta">{card.meta}</div>
-              </div>
-            ))}
-          </div>
-
-          {showEmpty ? (
-            <div className="card tax-empty-card">
-              <p>No tax-loss opportunities found in this portfolio for the selected date range.</p>
-            </div>
-          ) : (
-            <div className="card tax-table-card">
-              <div className="tax-table-header">
-                <div>
-                  <h3>Harvest candidates</h3>
-                  <p className="tax-table-subtitle">
-                    Sorted by largest unrealized loss; selected rows highlight the recommended lots.
-                  </p>
-                </div>
-              </div>
-              <div className="tax-table-wrapper">
-                <table className="tax-table">
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Lot ID</th>
-                      <th>Qty</th>
-                      <th>Cost basis</th>
-                      <th>Current price</th>
-                      <th>Unrealized P&amp;L ($)</th>
-                      <th>Unrealized P&amp;L (%)</th>
-                      <th>Days held</th>
-                      <th>Wash-sale</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result?.candidates.map((candidate) => (
-                      <tr
-                        key={candidate.lot_id}
-                        className={selectedLotIds.has(candidate.lot_id) ? "selected-row" : ""}
-                      >
-                        <td>
-                          <div className="tax-symbol">{candidate.symbol}</div>
-                          <div className="tax-symbol-meta">{candidate.purchase_date}</div>
-                        </td>
-                        <td>{candidate.lot_id}</td>
-                        <td>{candidate.quantity.toLocaleString()}</td>
-                        <td>{formatCurrency(candidate.cost_basis)}</td>
-                        <td>{formatCurrency(candidate.current_price)}</td>
-                        <td className="tax-pl">{formatCurrency(candidate.unrealized_pl)}</td>
-                        <td>{formatPercent(candidate.unrealized_pl_pct)}</td>
-                        <td>{candidate.days_held}</td>
-                        <td>
-                          {candidate.wash_sale_risk ? (
-                            <span className="tax-pill">Wash-sale risk</span>
-                          ) : (
-                            <span className="tax-pill safe">Clear</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
+      {showEmptyState && (
+        <Card className="tax-empty-card">
+          <p>No tax-loss harvesting opportunities found for the selected date range and portfolio.</p>
+        </Card>
       )}
-    </div>
+
+      {!showEmptyState && result && (
+        <Card className="tax-table-card">
+          <div className="tax-table-header">
+            <div>
+              <h3>Harvest candidates</h3>
+              <p className="tax-table-subtitle">
+                Sorted by largest unrealized loss; recommended rows are highlighted for the current target.
+              </p>
+            </div>
+          </div>
+          <div className="tax-table-wrapper">
+            <table className="tax-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th className="numeric">Quantity</th>
+                  <th className="numeric">Cost basis</th>
+                  <th className="numeric">Current price</th>
+                  <th className="numeric">Unrealized P&amp;L ($)</th>
+                  <th className="numeric">Unrealized P&amp;L (%)</th>
+                  <th className="numeric">Days held</th>
+                  <th>Wash-sale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.candidates.map((candidate) => (
+                  <tr
+                    key={candidate.lot_id}
+                    className={selectedLotIds.has(candidate.lot_id) ? "selected-row" : ""}
+                  >
+                    <td>
+                      <div className="tax-symbol">
+                        <div>{candidate.symbol}</div>
+                        <div className="tax-symbol-meta">{candidate.purchase_date}</div>
+                      </div>
+                      {selectedLotIds.has(candidate.lot_id) && (
+                        <span className="tax-pill recommended">Recommended</span>
+                      )}
+                    </td>
+                    <td className="numeric">{formatQuantity(candidate.quantity)}</td>
+                    <td className="numeric">{formatCurrency(candidate.cost_basis)}</td>
+                    <td className="numeric">{formatCurrency(candidate.current_price)}</td>
+                    <td className="numeric tax-pl">{formatCurrency(candidate.unrealized_pl)}</td>
+                    <td className="numeric">{formatPercent(candidate.unrealized_pl_pct)}</td>
+                    <td className="numeric">{candidate.days_held}</td>
+                    <td>
+                      {candidate.wash_sale_risk ? (
+                        <span className="tax-pill">Wash-sale risk</span>
+                      ) : (
+                        <span className="tax-pill safe">Clear</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </PageShell>
   );
 };
 
