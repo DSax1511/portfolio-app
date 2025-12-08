@@ -14,3 +14,4 @@ client/dist/
 
 # Environment files
 .env
+.coverage

@@ -163,3 +163,32 @@ Real quant metrics
 Reproducible environments (Docker)
 
 Extensible structure for more factor models, ML signals, execution sims, etc.
+
+## Documentation & research
+
+- `docs/saxtonpi_overview.md`: explains what Saxton PI solves (portfolio analytics, research, tax harvesting) and walks through the institutional-grade SMA/RSI workflow (signal-on-close/trade-next-open, integer shares, slippage, commissions, equity curve + metrics).  
+- `docs/design_decisions.md`: production notes on the React + FastAPI choice, feature-based frontend structure, CORS/env handling, deployment guidance, and known limitations/future work.  
+- `docs/architecture.svg`: visual map of Frontend → FastAPI → Analytics Engine → Data/Cache plus the detailed backtest flow (signals → trades → equity → metrics).  
+- Screenshots were removed from the repo to keep the build light—capture fresh hero frames by running `npm run dev` and taking your own frames if desired.
+
+## Sample data & demo setups
+
+- `sample_data/spy_sample.csv`: trimmed SPY price history you can load into the notebook or use for quick sanity checks.  
+- `sample_data/portfolio_positions.csv`: a sample portfolio (AAPL, MSFT, VTI, etc.) for uploading into the tax-harvest builder.  
+- `demo/strategy_config.json`: the SPY SMA/RSI configuration referenced across the docs.  
+- `demo/portfolio.json`: a small multi-asset portfolio for PM walkthroughs and tax-harvest analysis.
+
+## Research notebook
+
+- `notebooks/strategy_walkthrough.ipynb` runs a SMA fast/slow parameter sweep, renders a Sharpe/CAGR heatmap, and drills into a single corner (e.g., fast=10 / slow=200) using the local `run_quant_backtest` helper.
+
+## Testing & continuous integration
+
+- Backend pytest suite (`backend/app/tests/test_backtest_buy_and_hold_matches_benchmark.py`, `test_backtest_flat_strategy_keeps_equity_constant.py`, `test_drawdown_matches_hand_calculation.py`) ensures the quant engine maintains equity, drawdowns, and benchmark tracking math.  
+- Frontend Vitest check (`client/src/services/__tests__/apiClient.test.ts`) verifies `resolveApiBase` honors `VITE_API_BASE_URL` or falls back cleanly to localhost/same-origin.  
+- `.github/workflows/ci.yml` installs backend dependencies + runs pytest, then installs frontend deps, runs `npm run test`, and finally builds the React app so every push/PR validates both stacks.
+
+Run the stacks manually:
+
+- Backend tests: `cd backend && pytest`
+- Frontend tests: `cd client && npm run test`

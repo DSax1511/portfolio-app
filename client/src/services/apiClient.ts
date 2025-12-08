@@ -15,36 +15,44 @@ import { isApiErrorResponse } from "../types/errors";
  * - Production (same origin): Set VITE_API_BASE_URL=/api or leave unset
  * - Production (separate domain): Set VITE_API_BASE_URL=https://backend.example.com
  */
+const FALLBACK_LOCAL_BASE = "http://localhost:8000";
+
 const resolveApiBase = () => {
-  // 1. Check explicit environment variable
-  const envBase = import.meta.env.VITE_API_BASE_URL;
+  const metaEnvBase =
+    typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
+      ? import.meta.env.VITE_API_BASE_URL
+      : undefined;
+  const nodeEnvBase =
+    typeof process !== "undefined" && process.env?.VITE_API_BASE_URL
+      ? process.env.VITE_API_BASE_URL
+      : undefined;
+  const envBase = (metaEnvBase || nodeEnvBase || "").trim().replace(/\/$/, "");
+
   if (envBase) {
-    const trimmed = envBase.trim().replace(/\/$/, "");
-    console.log("[API] Using VITE_API_BASE_URL:", trimmed);
-    return trimmed;
+    console.log("[API] Using VITE_API_BASE_URL:", envBase);
+    return envBase;
   }
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     const protocol = window.location.protocol;
-    
-    // 2. Local dev detection
+
     if (host === "localhost" || host === "127.0.0.1") {
-      const localUrl = "http://localhost:8000";
-      console.log("[API] Local dev detected, using:", localUrl);
-      return localUrl;
+      console.log("[API] Local dev detected, using:", FALLBACK_LOCAL_BASE);
+      return FALLBACK_LOCAL_BASE;
     }
 
-    // 3. Same-origin backend (recommended for production)
     const sameOriginUrl = `${protocol}//${host}`;
     console.log("[API] Using same-origin backend:", sameOriginUrl);
     return sameOriginUrl;
   }
 
-  throw new Error("Could not determine API base URL");
+  console.log("[API] No browser context detected, defaulting to:", FALLBACK_LOCAL_BASE);
+  return FALLBACK_LOCAL_BASE;
 };
 
 export const apiBaseUrl = resolveApiBase();
+export { resolveApiBase };
 
 export class ApiClientError extends Error {
   status?: number;

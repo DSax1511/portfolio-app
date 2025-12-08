@@ -23,17 +23,6 @@ The default research payload uses:
 - Position mode: `long_flat`
 - `max_position_fraction = 1.0`, `slippage = 0.5 bps`, no commissions
 
-| Metric | Value |
-| --- | --- |
-| CAGR | 12.1% |
-| Annualized Volatility | 14.4% |
-| Sharpe | 0.84 |
-| Sortino | 1.32 |
-| Max Drawdown | -9.8% |
-| Win Rate | 47% |
-
-![Strategy Research](../docs/screenshots/strategy_research.png)
-
 ### Key findings
 
 - The SMA+RSI strategy underperforms buy-and-hold over the sampled window but reduces drawdowns by ~40%.
@@ -41,4 +30,4 @@ The default research payload uses:
 - Slippage (0.5 bps) and commission assumptions are baked into the equity curve math, so the chart reflects implementable returns.
 - PMs can export the execution log (CSV) and pair it with the tax harvest view to manage losses while staying aligned with the tail risk profile.
 
-The hero screenshot at `docs/screenshots/strategy_research.png` shows the refreshed metrics and execution log. The dashboard screenshot (`docs/screenshots/dashboard.png`) demonstrates how portfolio controls reuse the same card/panel system across modules.
+Collect your own desktop screenshots by running `npm run dev` (frontend) + `uvicorn app.main:app` (backend) and grabbing the hero/analytics views.
