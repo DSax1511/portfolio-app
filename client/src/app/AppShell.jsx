@@ -14,6 +14,7 @@ import HomePage from "../features/home/HomePage";
 import PortfolioDashboardPage from "../features/pm/PortfolioDashboardPage";
 import AllocationRebalancePage from "../features/pm/AllocationRebalancePage";
 import HistoricalAnalysisPage from "../features/pm/HistoricalAnalysisPage";
+import TaxHarvestPage from "../features/pm/TaxHarvestPage";
 import ExecutionSimulatorPage from "../features/quant/ExecutionSimulatorPage";
 import MicrostructurePage from "../features/quant/MicrostructurePage";
 import RegimesPage from "../features/quant/RegimesPage";
@@ -419,6 +420,7 @@ const AppContent = () => {
     if (path.startsWith("/pm/allocation")) return "Portfolio Management → Allocation & Rebalance";
     if (path.startsWith("/pm/historical")) return "Portfolio Management → Historical Analysis";
     if (path.startsWith("/pm/risk")) return "Portfolio Management → Risk & Diagnostics";
+    if (path.startsWith("/pm/tax-harvest")) return "Portfolio Management → Tax Harvest";
     if (path.startsWith("/quant/strategy")) return "Quant → Strategy Research";
     if (path.startsWith("/quant/market-structure")) return "Quant → Market Structure";
     if (path.startsWith("/quant/regimes")) return "Quant → Regimes";
@@ -486,6 +488,7 @@ const AppContent = () => {
                 element={<RiskDiagnosticsPage analysisPayload={latestRiskPayload} />}
               />
               <Route path="/pm/risk" element={<Navigate to="/pm/risk-diagnostics" replace />} />
+              <Route path="/pm/tax-harvest" element={<TaxHarvestPage />} />
               <Route path="/analytics" element={<Navigate to="/pm/risk-diagnostics" replace />} />
               <Route path="/quant/strategy-research" element={<StrategyBuilderPage />} />
               <Route path="/quant/strategy-builder" element={<Navigate to="/quant/strategy-research" replace />} />

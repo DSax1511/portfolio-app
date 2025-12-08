@@ -14,6 +14,7 @@ import {
   RiskBreakdownResponse,
   StrategyBuilderResponse,
   StressTestResponse,
+  TaxHarvestResponse,
 } from "../types/portfolio";
 
 export const portfolioApi = {
@@ -184,4 +185,16 @@ export const portfolioApi = {
     portfolio_value: number;
     prices: number[];
   }) => apiClient.post<RebalanceResponse>("/api/rebalance", payload),
+
+  getTaxHarvest: (payload: {
+    positions: Array<{
+      ticker: string;
+      quantity: number;
+      cost_basis: number;
+      current_price: number;
+      description?: string | null;
+    }>;
+    realized_gains?: number | null;
+    offset_target_pct?: number | null;
+  }) => apiClient.post<TaxHarvestResponse>("/api/tax-harvest", payload),
 };

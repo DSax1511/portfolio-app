@@ -83,6 +83,10 @@ from .models import (
     SavePresetRequest,
     StrategyBuilderRequest,
     StressTestRequest,
+    TaxHarvestRequest,
+    TaxHarvestResponse,
+    TaxHarvestCandidate,
+    TaxHarvestSummary,
 )
 from .rebalance import position_sizing, suggest_rebalance
 
@@ -269,6 +273,69 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
         benchmark=benchmark_payload,
         commentary=commentary_payload,
     )
+
+
+def _build_tax_notes(summary: TaxHarvestSummary, realized_target: float, offset_pct: float) -> List[str]:
+    notes = [
+        "Tax-loss harvesting can offset realized gains and up to $3k of ordinary income; track realized gains when pairing trades.",
+        "Wash-sale rules require waiting 31 days before buying the same ticker or a substantially identical security.",
+    ]
+    if realized_target > 0:
+        notes.insert(
+            0,
+            f"Targeting {int(offset_pct * 100)}% of your realized gains (${realized_target:,.2f}) with today's loss candidates.",
+        )
+    return notes
+
+
+@app.post("/api/tax-harvest", response_model=TaxHarvestResponse, responses={400: {"model": ApiError}})
+def tax_harvest(request: TaxHarvestRequest) -> TaxHarvestResponse:
+    """
+    Suggest tax-loss harvesting candidates based on unrealized losses.
+    """
+    if not request.positions:
+        raise HTTPException(status_code=400, detail="Provide at least one position for tax-loss harvesting analysis.")
+
+    candidates = []
+    for pos in request.positions:
+        market_value = pos.quantity * pos.current_price
+        pnl = market_value - pos.cost_basis
+        if pnl >= 0:
+            continue
+
+        loss_amount = -pnl
+        loss_pct = (loss_amount / pos.cost_basis) if pos.cost_basis else 0.0
+        candidate = TaxHarvestCandidate(
+            ticker=pos.ticker,
+            description=pos.description,
+            quantity=pos.quantity,
+            market_value=round(market_value, 2),
+            pnl=round(pnl, 2),
+            loss_amount=round(loss_amount, 2),
+            loss_pct=round(loss_pct, 4),
+            suggestion=f"Trim {pos.ticker} to harvest up to ${loss_amount:,.0f} in losses.",
+            replacement_note="Replace with a diversified proxy or similar sector ETF after the 31-day wash-sale window.",
+        )
+        candidates.append(candidate)
+
+    if not candidates:
+        raise HTTPException(status_code=400, detail="No loss positions found to harvest.")
+
+    candidates.sort(key=lambda c: c.loss_amount, reverse=True)
+    total_loss = sum(c.loss_amount for c in candidates)
+    target_offset = request.realized_gains * request.offset_target_pct
+    offset_capacity = min(total_loss, target_offset) if target_offset > 0 else total_loss
+
+    summary = TaxHarvestSummary(
+        total_unrealized_loss=round(total_loss, 2),
+        loss_positions=len(candidates),
+        top_loss=round(candidates[0].loss_amount, 2),
+        gain_offset_target=round(target_offset, 2),
+        offset_capacity=round(offset_capacity, 2),
+    )
+
+    notes = _build_tax_notes(summary, target_offset, request.offset_target_pct)
+    return TaxHarvestResponse(summary=summary, candidates=candidates[:6], notes=notes)
 
 
 def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> str:

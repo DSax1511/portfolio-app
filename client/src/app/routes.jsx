@@ -11,6 +11,7 @@ export const navSections = [
       { id: "pm-allocation", path: "/pm/allocation-rebalance", label: "Allocation & Rebalance" },
       { id: "pm-historical", path: "/pm/historical-analysis", label: "Historical Analysis" },
       { id: "pm-risk", path: "/pm/risk-diagnostics", label: "Risk & Diagnostics" },
+      { id: "pm-tax-harvest", path: "/pm/tax-harvest", label: "Tax Harvest" },
     ],
   },
   {

@@ -21,6 +21,55 @@ class Position(BaseModel):
     market_value: float
     pnl: float
 
+class TaxHarvestPosition(BaseModel):
+    ticker: str
+    quantity: float
+    cost_basis: float
+    current_price: float
+    description: Optional[str] = None
+
+    @validator("ticker", allow_reuse=True)
+    def ticker_upper(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @validator("quantity", "cost_basis", "current_price", allow_reuse=True)
+    def positive_numbers(cls, value: float, field) -> float:  # type: ignore
+        if value <= 0:
+            raise ValueError(f"{field.name} must be greater than zero")
+        return value
+
+
+class TaxHarvestSummary(BaseModel):
+    total_unrealized_loss: float
+    loss_positions: int
+    top_loss: float
+    gain_offset_target: float
+    offset_capacity: float
+
+
+class TaxHarvestCandidate(BaseModel):
+    ticker: str
+    description: Optional[str] = None
+    quantity: float
+    market_value: float
+    pnl: float
+    loss_amount: float
+    loss_pct: float
+    suggestion: str
+    replacement_note: Optional[str] = None
+
+
+class TaxHarvestResponse(BaseModel):
+    summary: TaxHarvestSummary
+    candidates: List[TaxHarvestCandidate]
+    notes: List[str]
+
+
+class TaxHarvestRequest(BaseModel):
+    positions: List[TaxHarvestPosition]
+    realized_gains: float = Field(0.0, ge=0.0)
+    offset_target_pct: float = Field(1.0, ge=0.0, le=1.0)
+
 
 class PortfolioMetricsRequest(BaseModel):
     tickers: List[str] = Field(..., min_items=1, description="List of ticker symbols")

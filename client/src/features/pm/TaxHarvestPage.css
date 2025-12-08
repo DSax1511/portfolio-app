@@ -1,0 +1,147 @@
+.tax-harvest-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.tax-controls {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.tax-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 180px;
+}
+
+.tax-control label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tax-control input[type="number"] {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+}
+
+.tax-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tax-range input[type="range"] {
+  flex: 1;
+}
+
+.tax-error {
+  padding: var(--space-4);
+  background: rgba(255, 70, 93, 0.1);
+  border: 1px solid rgba(255, 70, 93, 0.4);
+  border-radius: var(--radius-md);
+  color: var(--accent-red);
+}
+
+.tax-loading {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.tax-harvest-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.tax-stat-card {
+  background: rgba(21, 27, 33, 0.9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tax-stat-card .stat-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tax-stat-card .stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.tax-stat-card .stat-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.tax-stat-card .positive {
+  color: var(--positive);
+}
+
+.tax-table-wrapper {
+  overflow-x: auto;
+}
+
+.tax-harvest-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.tax-harvest-table th,
+.tax-harvest-table td {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.tax-harvest-table th {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.tax-harvest-table tr:last-child td {
+  border-bottom: none;
+}
+
+.tax-ticker {
+  font-weight: 600;
+}
+
+.tax-ticker-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.tax-notes-card .card-header {
+  margin-bottom: 0.5rem;
+}
+
+.tax-notes {
+  list-style: disc outside;
+  padding-left: 1rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}

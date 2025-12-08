@@ -18,31 +18,8 @@ from .infra.utils import parse_date
 
 logger = logging.getLogger(__name__)
 
-# Global semaphore for rate limiting - will be created lazily per event loop
-_yf_semaphore: Optional[asyncio.Semaphore] = None
-_semaphore_lock = asyncio.Lock() if asyncio._get_running_loop() is None else None
-
-
-def _get_semaphore() -> asyncio.Semaphore:
-    """
-    Get or create a semaphore for the current event loop.
-
-    This ensures the semaphore is always bound to the correct event loop,
-    preventing "bound to a different event loop" errors.
-    """
-    global _yf_semaphore
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop, create a new semaphore
-        _yf_semaphore = asyncio.Semaphore(3)
-        return _yf_semaphore
-
-    # Check if semaphore exists and is bound to current loop
-    if _yf_semaphore is None or _yf_semaphore._loop != loop:
-        _yf_semaphore = asyncio.Semaphore(3)
-
-    return _yf_semaphore
+# Per-loop semaphore storage to prevent "bound to different event loop" errors
+_loop_semaphores: Dict[int, asyncio.Semaphore] = {}
 
 
 def _cache_path(ticker: str) -> Path:
@@ -155,9 +132,16 @@ async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.dat
     Returns:
         Tuple of (price series, is_network_error)
     """
-    semaphore = _get_semaphore()
+    # Get or create semaphore for current event loop
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+
+    if loop_id not in _loop_semaphores:
+        _loop_semaphores[loop_id] = asyncio.Semaphore(3)
+
+    semaphore = _loop_semaphores[loop_id]
+
     async with semaphore:
-        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
 
 
