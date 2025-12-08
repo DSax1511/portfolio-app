@@ -158,8 +158,8 @@ const StrategyBuilderPage = () => {
 
   const summary = result?.summary;
   const trades = result?.trades || [];
-  const sampleSize = result?.dates?.length ?? 0;
   const summaryMetadata = result?.metric_metadata || {};
+  const sampleSize = result?.dates?.length ?? 0;
   const sampleSize = result?.dates?.length ?? 0;
   const summaryMetricTemplates = summary
     ? [
