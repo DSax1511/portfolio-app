@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-export type AppMode = "pm" | "research" | "execution";
+export type AppMode = "home" | "pm" | "research" | "execution";
 
 export const MODE_TABS: Array<{
   id: AppMode;
@@ -15,6 +15,9 @@ export const MODE_TABS: Array<{
 ];
 
 const detectMode = (pathname: string): AppMode => {
+  if (pathname.startsWith("/home")) {
+    return "home";
+  }
   if (pathname.startsWith("/quant/execution") || pathname.startsWith("/quant/market-structure")) {
     return "execution";
   }

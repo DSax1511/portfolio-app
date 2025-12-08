@@ -1,4 +1,7 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
+import MarketStatusBadge from "../ui/MarketStatusBadge";
+import { useAppMode } from "../../state/appMode";
 
 const Icon = ({ children, size = 18 }) => (
   <svg
@@ -33,6 +36,8 @@ const TopNav = ({
   onExitDemo,
 }) => {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const navigate = useNavigate();
+  const { mode, setMode } = useAppMode();
 
   return (
     <header
@@ -95,10 +100,25 @@ const TopNav = ({
             </span>
           ) : null}
         </div>
+        <button
+          type="button"
+          className={`top-nav-home-pill ${mode === "home" ? "active" : ""}`}
+          onClick={() => {
+            setMode("home");
+            navigate("/home");
+          }}
+        >
+          <Icon size={16}>
+            <path d="M4 12L12 5l8 7" />
+            <path d="M8 12v7h8v-7" />
+          </Icon>
+          <span>Home</span>
+        </button>
       </div>
 
-      {/* CENTER: Empty (market data feature removed) */}
-      <div />
+      <div className="top-nav-market">
+        <MarketStatusBadge />
+      </div>
 
       {/* RIGHT: Action cluster */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>

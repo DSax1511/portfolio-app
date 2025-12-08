@@ -109,6 +109,61 @@ a {
   gap: var(--space-sm);
 }
 
+.top-nav-home-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.top-nav-home-pill.active {
+  border-color: rgba(79, 140, 255, 0.6);
+  background: rgba(79, 140, 255, 0.12);
+}
+
+.top-nav-home-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.top-nav-market {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.market-status-badge {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 17, 24, 0.9);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  transition: border 0.2s ease, background 0.2s ease;
+}
+
+.market-status-badge--open {
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.market-status-badge__time {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .btn {
   border: 1px solid var(--border-subtle);
   background: rgba(255, 255, 255, 0.02);
