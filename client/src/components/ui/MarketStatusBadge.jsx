@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 const MARKET_ZONE = "America/New_York";
 const REFRESH_MS = 30 * 1000;
 
-const buildMarketState = (now: Date) => {
+const buildMarketState = (now) => {
   const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: MARKET_ZONE }).format(now);
   const timeFormatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
