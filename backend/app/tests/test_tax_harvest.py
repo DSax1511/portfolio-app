@@ -11,45 +11,74 @@ def client():
 
 
 @pytest.mark.unit
-def test_tax_harvest_suggests_loss_candidates(client):
-    """Endpoint should return a summary and top loss candidates."""
-    payload = {
-        "positions": [
-            {"ticker": "LOSS1", "quantity": 50, "cost_basis": 6000, "current_price": 90},
-            {"ticker": "LOSS2", "quantity": 30, "cost_basis": 4500, "current_price": 110},
-        ],
-        "realized_gains": 5000,
-        "offset_target_pct": 0.5,
-    }
-    response = client.post("/api/tax-harvest", json=payload)
+def test_tax_harvest_returns_candidates(client):
+    response = client.post(
+        "/api/tax-harvest",
+        json={
+            "portfolio_id": "demo",
+            "date_range": "MAX",
+            "realized_gains_to_offset": 5000,
+            "target_fraction_of_gains": 0.5,
+            "benchmark": "SPY",
+        },
+    )
     assert response.status_code == 200
 
     data = response.json()
     summary = data["summary"]
-    candidates = data["candidates"]
 
-    assert summary["loss_positions"] == 2
-    assert summary["top_loss"] == 1500.0
-    assert summary["offset_capacity"] == 2500.0
-    assert summary["gain_offset_target"] == 2500.0
-
-    assert len(candidates) == 2
-    assert candidates[0]["ticker"] == "LOSS1"
-    assert candidates[0]["loss_amount"] == 1500.0
-    assert candidates[1]["loss_amount"] == 1200.0
-
-    assert isinstance(data["notes"], list)
-    assert "Targeting 50%" in data["notes"][0]
+    assert summary["target_loss_to_realize"] == 2500.0
+    assert summary["estimated_tax_savings"] == 831.0
+    assert len(data["candidates"]) == 4
+    assert data["candidates"][0]["symbol"] == "AAPL"
+    assert data["selected_candidates"][0]["lot_id"] == "AAPL-01"
+    assert len(data["selected_candidates"]) == 1
 
 
 @pytest.mark.unit
-def test_tax_harvest_requires_losses(client):
-    """Endpoint should reject portfolios without unrealized losses."""
-    payload = {
-        "positions": [
-            {"ticker": "GAIN", "quantity": 40, "cost_basis": 3000, "current_price": 90},
-        ],
-    }
-    response = client.post("/api/tax-harvest", json=payload)
-    assert response.status_code == 400
-    assert "No loss positions" in response.json().get("detail", "")
+def test_tax_harvest_respects_date_range_filter(client):
+    full_resp = client.post(
+        "/api/tax-harvest",
+        json={
+            "portfolio_id": "demo",
+            "date_range": "MAX",
+            "realized_gains_to_offset": 0,
+            "target_fraction_of_gains": 1.0,
+        },
+    )
+    one_year_resp = client.post(
+        "/api/tax-harvest",
+        json={
+            "portfolio_id": "demo",
+            "date_range": "1Y",
+            "realized_gains_to_offset": 0,
+            "target_fraction_of_gains": 1.0,
+        },
+    )
+    assert full_resp.status_code == 200
+    assert one_year_resp.status_code == 200
+    full = full_resp.json()
+    one_year = one_year_resp.json()
+
+    assert len(full["candidates"]) > len(one_year["candidates"])
+    symbols = {lot["symbol"] for lot in one_year["candidates"]}
+    assert "TLT" not in symbols
+
+
+@pytest.mark.unit
+def test_tax_harvest_handles_no_losses(client):
+    response = client.post(
+        "/api/tax-harvest",
+        json={
+            "portfolio_id": "gains_only",
+            "date_range": "MAX",
+            "realized_gains_to_offset": 1000,
+            "target_fraction_of_gains": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidates"] == []
+    assert data["selected_candidates"] == []
+    assert data["summary"]["total_unrealized_losses"] == 0

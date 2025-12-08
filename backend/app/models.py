@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from datetime import date
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -21,54 +22,63 @@ class Position(BaseModel):
     market_value: float
     pnl: float
 
-class TaxHarvestPosition(BaseModel):
-    ticker: str
+class PositionLot(BaseModel):
+    symbol: str
+    lot_id: str
     quantity: float
     cost_basis: float
+    purchase_date: date
     current_price: float
-    description: Optional[str] = None
 
-    @validator("ticker", allow_reuse=True)
-    def ticker_upper(cls, value: str) -> str:
+    @validator("symbol", allow_reuse=True)
+    def normalize_symbol(cls, value: str) -> str:
         return value.strip().upper()
 
     @validator("quantity", "cost_basis", "current_price", allow_reuse=True)
-    def positive_numbers(cls, value: float, field) -> float:  # type: ignore
+    def require_positive(cls, value: float, field) -> float:  # type: ignore
         if value <= 0:
             raise ValueError(f"{field.name} must be greater than zero")
         return value
 
 
-class TaxHarvestSummary(BaseModel):
-    total_unrealized_loss: float
-    loss_positions: int
-    top_loss: float
-    gain_offset_target: float
-    offset_capacity: float
-
-
-class TaxHarvestCandidate(BaseModel):
-    ticker: str
-    description: Optional[str] = None
+class HarvestCandidate(BaseModel):
+    symbol: str
+    lot_id: str
     quantity: float
-    market_value: float
-    pnl: float
-    loss_amount: float
-    loss_pct: float
-    suggestion: str
-    replacement_note: Optional[str] = None
+    cost_basis: float
+    current_price: float
+    purchase_date: date
+    unrealized_pl: float
+    unrealized_pl_pct: float
+    days_held: int
+    wash_sale_risk: bool
+
+
+class TaxHarvestSummary(BaseModel):
+    total_unrealized_losses: float
+    max_harvestable_loss: float
+    target_loss_to_realize: float
+    estimated_tax_savings: float
+    marginal_tax_rate: float
 
 
 class TaxHarvestResponse(BaseModel):
     summary: TaxHarvestSummary
-    candidates: List[TaxHarvestCandidate]
-    notes: List[str]
+    candidates: List[HarvestCandidate]
+    selected_candidates: List[HarvestCandidate]
 
 
 class TaxHarvestRequest(BaseModel):
-    positions: List[TaxHarvestPosition]
-    realized_gains: float = Field(0.0, ge=0.0)
-    offset_target_pct: float = Field(1.0, ge=0.0, le=1.0)
+    portfolio_id: str
+    date_range: Literal["1Y", "3Y", "5Y", "MAX"]
+    realized_gains_to_offset: float = Field(0.0, ge=0.0)
+    target_fraction_of_gains: float = Field(1.0, ge=0.0, le=1.0)
+    benchmark: Optional[str] = None
+    marginal_tax_rate: float = Field(0.25, ge=0.0, le=1.0)
+
+    @validator("portfolio_id", allow_reuse=True)
+    def normalize_portfolio_id(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class PortfolioMetricsRequest(BaseModel):

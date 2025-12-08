@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)
 _loop_semaphores: Dict[int, asyncio.Semaphore] = {}
 
 
-def _cache_path(ticker: str) -> Path:
-  return settings.data_cache_dir / f"{ticker.upper()}.parquet"
+def _cache_path(ticker: str, field: str) -> Path:
+    return settings.data_cache_dir / f"{ticker.upper()}_{field.lower()}.parquet"
 
 
 def _fetch_from_yf_sync(
     ticker: str,
     start: dt.date,
     end: Optional[dt.date],
+    field: str,
     max_retries: int = 5,
     base_delay: float = 3.0
 ) -> Tuple[pd.Series, bool]:
@@ -58,7 +59,7 @@ def _fetch_from_yf_sync(
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"Fetching {ticker} from yfinance (attempt {attempt + 1}/{max_retries})")
+            logger.info(f"Fetching {ticker} ({field}) from yfinance (attempt {attempt + 1}/{max_retries})")
             data = yf.download(
                 tickers=[ticker],
                 start=start,
@@ -71,14 +72,15 @@ def _fetch_from_yf_sync(
                 logger.warning(f"No data returned for {ticker} - ticker may not exist or have no history")
                 return pd.Series(dtype=float), False
 
-            # Extract Close prices
             if isinstance(data.columns, pd.MultiIndex):
-                close = data.loc[:, (slice(None), "Close")]
-                close.columns = [c[0] for c in close.columns]
-                logger.info(f"Successfully fetched {len(close)} datapoints for {ticker}")
-                return close.iloc[:, 0], False
-            logger.info(f"Successfully fetched {len(data)} datapoints for {ticker}")
-            return data["Close"], False
+                subset = data.loc[:, (slice(None), field)]
+                subset.columns = [c[0] for c in subset.columns]
+                logger.info(f"Successfully fetched {len(subset)} datapoints for {ticker} ({field})")
+                return subset.iloc[:, 0], False
+            if field not in data.columns:
+                raise ValueError(f"{field} not available for {ticker}")
+            logger.info(f"Successfully fetched {len(data)} datapoints for {ticker} ({field})")
+            return data[field], False
 
         except Exception as e:
             last_exception = e
@@ -124,7 +126,7 @@ def _fetch_from_yf_sync(
     return pd.Series(dtype=float), True
 
 
-async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date]) -> Tuple[pd.Series, bool]:
+async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.date], field: str) -> Tuple[pd.Series, bool]:
     """
     Async wrapper with rate-limiting semaphore to prevent overwhelming yfinance.
     Limits concurrent requests to 3 at a time to avoid rate limits.
@@ -142,7 +144,7 @@ async def _fetch_from_yf_async(ticker: str, start: dt.date, end: Optional[dt.dat
     semaphore = _loop_semaphores[loop_id]
 
     async with semaphore:
-        return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end)
+        return await loop.run_in_executor(None, _fetch_from_yf_sync, ticker, start, end, field)
 
 
 def _raise_data_error(ticker: str, is_network_error: bool = False) -> None:
@@ -183,7 +185,7 @@ def _raise_data_error(ticker: str, is_network_error: bool = False) -> None:
         )
 
 
-def _load_cached(ticker: str, ttl_hours: int = 24) -> pd.Series:
+def _load_cached(ticker: str, field: str, ttl_hours: int = 24) -> pd.Series:
     """
     Load cached price data with TTL (time-to-live) validation.
 
@@ -194,7 +196,7 @@ def _load_cached(ticker: str, ttl_hours: int = 24) -> pd.Series:
     Returns:
         Cached price series if valid, otherwise empty Series
     """
-    path = _cache_path(ticker)
+    path = _cache_path(ticker, field)
     if not path.exists():
         return pd.Series(dtype=float)
 
@@ -242,15 +244,15 @@ def _load_cached(ticker: str, ttl_hours: int = 24) -> pd.Series:
         return pd.Series(dtype=float)
 
 
-def _save_cache(ticker: str, series: pd.Series) -> None:
+def _save_cache(ticker: str, series: pd.Series, field: str) -> None:
     if series.empty:
         return
     settings.data_cache_dir.mkdir(parents=True, exist_ok=True)
-    series.to_frame(name=ticker).to_parquet(_cache_path(ticker))
+    series.to_frame(name=ticker).to_parquet(_cache_path(ticker, field))
 
 
 async def _fetch_single_ticker_async(
-    ticker: str, start_date: dt.date, end_date: Optional[dt.date]
+    ticker: str, start_date: dt.date, end_date: Optional[dt.date], field: str
 ) -> Tuple[str, pd.Series]:
     """
     Fetch a single ticker's price history, with caching and fallback.
@@ -264,7 +266,7 @@ async def _fetch_single_ticker_async(
     Raises:
         HTTPException: If data cannot be obtained from cache or yfinance
     """
-    cached = _load_cached(ticker)
+    cached = _load_cached(ticker, field)
     need_fetch = (
         cached.empty
         or cached.index.min().date() > start_date
@@ -276,7 +278,7 @@ async def _fetch_single_ticker_async(
         is_network_error = False
 
         try:
-            fetched, is_network_error = await _fetch_from_yf_async(ticker, start_date, end_date)
+            fetched, is_network_error = await _fetch_from_yf_async(ticker, start_date, end_date, field)
             # Add delay between requests to avoid rate limiting
             await asyncio.sleep(1.0)
         except Exception as e:
@@ -292,7 +294,7 @@ async def _fetch_single_ticker_async(
             # Use fetched data if available, otherwise fall back to cache
             series = fetched if not fetched.empty else cached
             if not fetched.empty:
-                _save_cache(ticker, series)
+                _save_cache(ticker, series, field)
     else:
         # Cache is sufficient
         series = cached
@@ -300,7 +302,7 @@ async def _fetch_single_ticker_async(
     return ticker, series.rename(ticker)
 
 
-def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[str]) -> pd.DataFrame:
+def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[str], field: str = "Close") -> pd.DataFrame:
     """
     Fetch daily close prices for tickers using yfinance with concurrent async fetching.
 
@@ -321,7 +323,7 @@ def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[
         # We're in an async context, create new thread to avoid blocking
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(_fetch_sync_wrapper, tickers, start_date, end_date)
+            future = executor.submit(_fetch_sync_wrapper, tickers, start_date, end_date, field)
             frames = future.result()
     except RuntimeError:
         # No running loop, safe to create one
@@ -329,7 +331,7 @@ def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[
         asyncio.set_event_loop(loop)
         try:
             tasks = [
-                _fetch_single_ticker_async(ticker, start_date, end_date)
+                _fetch_single_ticker_async(ticker, start_date, end_date, field)
                 for ticker in tickers
             ]
             results = loop.run_until_complete(asyncio.gather(*tasks))
@@ -345,7 +347,7 @@ def fetch_price_history(tickers: List[str], start: Optional[str], end: Optional[
     return closes
 
 
-def _fetch_sync_wrapper(tickers: List[str], start_date: dt.date, end_date: Optional[dt.date]) -> List[pd.Series]:
+def _fetch_sync_wrapper(tickers: List[str], start_date: dt.date, end_date: Optional[dt.date], field: str) -> List[pd.Series]:
     """
     Synchronous wrapper for fetch operations when called from async context.
     Creates a new event loop in a separate thread.
@@ -354,7 +356,7 @@ def _fetch_sync_wrapper(tickers: List[str], start_date: dt.date, end_date: Optio
     asyncio.set_event_loop(loop)
     try:
         tasks = [
-            _fetch_single_ticker_async(ticker, start_date, end_date)
+            _fetch_single_ticker_async(ticker, start_date, end_date, field)
             for ticker in tickers
         ]
         results = loop.run_until_complete(asyncio.gather(*tasks))

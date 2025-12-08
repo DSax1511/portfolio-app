@@ -187,14 +187,11 @@ export const portfolioApi = {
   }) => apiClient.post<RebalanceResponse>("/api/rebalance", payload),
 
   getTaxHarvest: (payload: {
-    positions: Array<{
-      ticker: string;
-      quantity: number;
-      cost_basis: number;
-      current_price: number;
-      description?: string | null;
-    }>;
-    realized_gains?: number | null;
-    offset_target_pct?: number | null;
+    portfolio_id: string;
+    date_range: "1Y" | "3Y" | "5Y" | "MAX";
+    realized_gains_to_offset?: number | null;
+    target_fraction_of_gains?: number | null;
+    benchmark?: string | null;
+    marginal_tax_rate?: number | null;
   }) => apiClient.post<TaxHarvestResponse>("/api/tax-harvest", payload),
 };

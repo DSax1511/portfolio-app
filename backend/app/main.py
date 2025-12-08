@@ -8,7 +8,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -61,10 +61,12 @@ from .models import (
     DashboardResponse,
     FactorExposureRequest,
     FrontierRequest,
+    HarvestCandidate,
     MonteCarloRequest,
     PortfolioMetricsRequest,
     PortfolioMetricsResponse,
     Position,
+    PositionLot,
     PositionSizingRequest,
     PositionSizingResponse,
     RebalanceRequest,
@@ -85,7 +87,6 @@ from .models import (
     StressTestRequest,
     TaxHarvestRequest,
     TaxHarvestResponse,
-    TaxHarvestCandidate,
     TaxHarvestSummary,
 )
 from .rebalance import position_sizing, suggest_rebalance
@@ -275,67 +276,181 @@ def portfolio_metrics(request: PortfolioMetricsRequest) -> PortfolioMetricsRespo
     )
 
 
-def _build_tax_notes(summary: TaxHarvestSummary, realized_target: float, offset_pct: float) -> List[str]:
-    notes = [
-        "Tax-loss harvesting can offset realized gains and up to $3k of ordinary income; track realized gains when pairing trades.",
-        "Wash-sale rules require waiting 31 days before buying the same ticker or a substantially identical security.",
-    ]
-    if realized_target > 0:
-        notes.insert(
-            0,
-            f"Targeting {int(offset_pct * 100)}% of your realized gains (${realized_target:,.2f}) with today's loss candidates.",
-        )
-    return notes
+_DATE_RANGE_WINDOWS = {
+    "1Y": 365,
+    "3Y": 365 * 3,
+    "5Y": 365 * 5,
+    "MAX": None,
+}
+
+
+def _build_sample_portfolios() -> Dict[str, List[PositionLot]]:
+    today = dt.date.today()
+    return {
+        "demo": [
+            PositionLot(
+                symbol="AAPL",
+                lot_id="AAPL-01",
+                quantity=120,
+                cost_basis=215.0,
+                purchase_date=today - dt.timedelta(days=200),
+                current_price=187.3,
+            ),
+            PositionLot(
+                symbol="TLT",
+                lot_id="TLT-01",
+                quantity=60,
+                cost_basis=113.0,
+                purchase_date=today - dt.timedelta(days=450),
+                current_price=95.1,
+            ),
+            PositionLot(
+                symbol="NVDA",
+                lot_id="NVDA-01",
+                quantity=40,
+                cost_basis=620.0,
+                purchase_date=today - dt.timedelta(days=30),
+                current_price=780.4,
+            ),
+            PositionLot(
+                symbol="QQQ",
+                lot_id="QQQ-01",
+                quantity=80,
+                cost_basis=400.0,
+                purchase_date=today - dt.timedelta(days=90),
+                current_price=387.2,
+            ),
+            PositionLot(
+                symbol="GLD",
+                lot_id="GLD-01",
+                quantity=50,
+                cost_basis=184.0,
+                purchase_date=today - dt.timedelta(days=20),
+                current_price=188.3,
+            ),
+            PositionLot(
+                symbol="IWM",
+                lot_id="IWM-01",
+                quantity=150,
+                cost_basis=180.0,
+                purchase_date=today - dt.timedelta(days=800),
+                current_price=162.5,
+            ),
+        ],
+        "gains_only": [
+            PositionLot(
+                symbol="MSFT",
+                lot_id="MSFT-01",
+                quantity=100,
+                cost_basis=300.0,
+                purchase_date=today - dt.timedelta(days=400),
+                current_price=412.2,
+            ),
+            PositionLot(
+                symbol="AMZN",
+                lot_id="AMZN-01",
+                quantity=70,
+                cost_basis=150.0,
+                purchase_date=today - dt.timedelta(days=200),
+                current_price=170.5,
+            ),
+        ],
+    }
+
+
+_SAMPLE_PORTFOLIOS = _build_sample_portfolios()
+
+
+def _filter_lots_by_range(lots: List[PositionLot], date_range: str) -> List[PositionLot]:
+    window = _DATE_RANGE_WINDOWS.get(date_range)
+    if window is None:
+        return lots
+    cutoff = dt.date.today() - dt.timedelta(days=window)
+    return [lot for lot in lots if lot.purchase_date >= cutoff]
+
+
+def _build_candidate(lot: PositionLot, today: dt.date) -> HarvestCandidate:
+    unrealized_pl = (lot.current_price - lot.cost_basis) * lot.quantity
+    days = (today - lot.purchase_date).days
+    return HarvestCandidate(
+        symbol=lot.symbol,
+        lot_id=lot.lot_id,
+        quantity=lot.quantity,
+        cost_basis=lot.cost_basis,
+        current_price=lot.current_price,
+        purchase_date=lot.purchase_date,
+        unrealized_pl=round(unrealized_pl, 2),
+        unrealized_pl_pct=round((lot.current_price - lot.cost_basis) / lot.cost_basis, 4),
+        days_held=days,
+        wash_sale_risk=lot.purchase_date >= today - dt.timedelta(days=30),
+    )
+
+
+def _select_candidates(
+    candidates: List[HarvestCandidate],
+    target_loss: float,
+) -> Tuple[List[HarvestCandidate], float]:
+    if not candidates:
+        return [], 0.0
+
+    selected: List[HarvestCandidate] = []
+    accumulated_loss = 0.0
+
+    if target_loss > 0:
+        for candidate in candidates:
+            lot_loss = abs(candidate.unrealized_pl)
+            if accumulated_loss + lot_loss <= target_loss:
+                selected.append(candidate)
+                accumulated_loss += lot_loss
+                if accumulated_loss >= target_loss:
+                    break
+                continue
+            if not selected:
+                selected.append(candidate)
+                accumulated_loss += lot_loss
+                break
+    else:
+        filtered = [c for c in candidates if c.unrealized_pl_pct <= -0.05]
+        if filtered:
+            selected = filtered[:10]
+        else:
+            selected = candidates[: min(10, len(candidates))]
+        accumulated_loss = sum(abs(c.unrealized_pl) for c in selected)
+
+    return selected, accumulated_loss
 
 
 @app.post("/api/tax-harvest", response_model=TaxHarvestResponse, responses={400: {"model": ApiError}})
 def tax_harvest(request: TaxHarvestRequest) -> TaxHarvestResponse:
-    """
-    Suggest tax-loss harvesting candidates based on unrealized losses.
-    """
-    if not request.positions:
-        raise HTTPException(status_code=400, detail="Provide at least one position for tax-loss harvesting analysis.")
+    lots = _SAMPLE_PORTFOLIOS.get(request.portfolio_id, _SAMPLE_PORTFOLIOS["demo"])
+    filtered_lots = _filter_lots_by_range(lots, request.date_range)
+    today = dt.date.today()
 
-    candidates = []
-    for pos in request.positions:
-        market_value = pos.quantity * pos.current_price
-        pnl = market_value - pos.cost_basis
-        if pnl >= 0:
-            continue
+    candidates = [
+        _build_candidate(lot, today)
+        for lot in filtered_lots
+        if (lot.current_price - lot.cost_basis) * lot.quantity < 0
+    ]
+    candidates.sort(key=lambda c: c.unrealized_pl)
 
-        loss_amount = -pnl
-        loss_pct = (loss_amount / pos.cost_basis) if pos.cost_basis else 0.0
-        candidate = TaxHarvestCandidate(
-            ticker=pos.ticker,
-            description=pos.description,
-            quantity=pos.quantity,
-            market_value=round(market_value, 2),
-            pnl=round(pnl, 2),
-            loss_amount=round(loss_amount, 2),
-            loss_pct=round(loss_pct, 4),
-            suggestion=f"Trim {pos.ticker} to harvest up to ${loss_amount:,.0f} in losses.",
-            replacement_note="Replace with a diversified proxy or similar sector ETF after the 31-day wash-sale window.",
-        )
-        candidates.append(candidate)
+    total_loss = sum(abs(c.unrealized_pl) for c in candidates)
+    target_loss = round(request.realized_gains_to_offset * request.target_fraction_of_gains, 2)
 
-    if not candidates:
-        raise HTTPException(status_code=400, detail="No loss positions found to harvest.")
-
-    candidates.sort(key=lambda c: c.loss_amount, reverse=True)
-    total_loss = sum(c.loss_amount for c in candidates)
-    target_offset = request.realized_gains * request.offset_target_pct
-    offset_capacity = min(total_loss, target_offset) if target_offset > 0 else total_loss
+    selected_candidates, selected_loss_sum = _select_candidates(candidates, target_loss)
 
     summary = TaxHarvestSummary(
-        total_unrealized_loss=round(total_loss, 2),
-        loss_positions=len(candidates),
-        top_loss=round(candidates[0].loss_amount, 2),
-        gain_offset_target=round(target_offset, 2),
-        offset_capacity=round(offset_capacity, 2),
+        total_unrealized_losses=round(total_loss, 2),
+        max_harvestable_loss=round(total_loss, 2),
+        target_loss_to_realize=target_loss,
+        estimated_tax_savings=round(selected_loss_sum * request.marginal_tax_rate, 2),
+        marginal_tax_rate=request.marginal_tax_rate,
     )
 
-    notes = _build_tax_notes(summary, target_offset, request.offset_target_pct)
-    return TaxHarvestResponse(summary=summary, candidates=candidates[:6], notes=notes)
+    return TaxHarvestResponse(
+        summary=summary,
+        candidates=candidates,
+        selected_candidates=selected_candidates,
+    )
 
 
 def _persist_run(kind: str, params: Dict[str, Any], returns: pd.Series, stats: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> str:

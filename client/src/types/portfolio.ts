@@ -200,30 +200,31 @@ export interface RiskBreakdownResponse {
   correlation?: Record<string, Record<string, number>>;
 }
 
-export interface TaxHarvestSummary {
-  total_unrealized_loss: number;
-  loss_positions: number;
-  top_loss: number;
-  gain_offset_target: number;
-  offset_capacity: number;
+export interface HarvestCandidate {
+  symbol: string;
+  lot_id: string;
+  quantity: number;
+  cost_basis: number;
+  current_price: number;
+  purchase_date: string;
+  unrealized_pl: number;
+  unrealized_pl_pct: number;
+  days_held: number;
+  wash_sale_risk: boolean;
 }
 
-export interface TaxHarvestCandidate {
-  ticker: string;
-  description?: string | null;
-  quantity: number;
-  market_value: number;
-  pnl: number;
-  loss_amount: number;
-  loss_pct: number;
-  suggestion: string;
-  replacement_note?: string | null;
+export interface TaxHarvestSummary {
+  total_unrealized_losses: number;
+  max_harvestable_loss: number;
+  target_loss_to_realize: number;
+  estimated_tax_savings: number;
+  marginal_tax_rate: number;
 }
 
 export interface TaxHarvestResponse {
   summary: TaxHarvestSummary;
-  candidates: TaxHarvestCandidate[];
-  notes: string[];
+  candidates: HarvestCandidate[];
+  selected_candidates: HarvestCandidate[];
 }
 
 export interface BenchmarkResponse {
