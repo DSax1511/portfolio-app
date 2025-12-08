@@ -438,10 +438,13 @@ const AppContent = () => {
     const path = location.pathname || "";
     if (path.startsWith("/home")) return "Home";
     if (path.startsWith("/pm/dashboard")) return "Portfolio Dashboard";
-    if (path.startsWith("/overview")) return "Portfolio Overview";
-    if (path.startsWith("/pm/risk-diagnostics") || path.startsWith("/analytics")) return "Analytics";
-    if (path.startsWith("/quant/strategy-research")) return "Strategy Research";
+    if (path.startsWith("/pm/historical-analysis")) return "Historical Analysis";
+    if (path.startsWith("/pm/risk-diagnostics") || path.startsWith("/analytics")) return "Analytics & Risk";
     if (path.startsWith("/pm/tax-harvest")) return "Tax Harvest";
+    if (path.startsWith("/quant/strategy-research")) return "Strategy Research";
+    if (path.startsWith("/quant/regimes")) return "Market Regimes";
+    if (path.startsWith("/quant/execution-lab")) return "Execution Simulator";
+    if (path.startsWith("/quant/market-structure")) return "Market Structure";
     if (path.startsWith("/about")) return "About";
     if (path.startsWith("/contact")) return "Contact";
     if (path.startsWith("/math-engine")) return "Mathematical Engine";
