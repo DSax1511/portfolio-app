@@ -10,7 +10,6 @@ import { useQuantLabStore } from "../../state/quantLabStore";
 import { useActiveRun } from "../../state/activeRun";
 import { formatDateTick } from "../../utils/format";
 import { getMetricMethodology, getSignificanceHint, isMetricSignificant } from "../../utils/significance";
-import type { MetricMetadataMap } from "../../types/portfolio";
 
 const today = new Date();
 const defaultEndDate = today.toISOString().slice(0, 10);
@@ -160,7 +159,7 @@ const StrategyBuilderPage = () => {
   const summary = result?.summary;
   const trades = result?.trades || [];
   const sampleSize = result?.dates?.length ?? 0;
-  const summaryMetadata: MetricMetadataMap = (result?.metric_metadata as MetricMetadataMap) || {};
+  const summaryMetadata = result?.metric_metadata || {};
   const sampleSize = result?.dates?.length ?? 0;
   const summaryMetricTemplates = summary
     ? [
