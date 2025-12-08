@@ -1,6 +1,8 @@
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { formatDateTickShort } from "../../../utils/format";
 
-const RollingStatsChart = ({ data }) => {
+const RollingStatsChart = ({ rollingStats = [] }) => {
+  const data = rollingStats;
   if (!data || !data.length) {
     return <p className="muted">Run an analysis to view rolling stats.</p>;
   }
@@ -49,4 +51,3 @@ const RollingStatsChart = ({ data }) => {
 };
 
 export default RollingStatsChart;
-import { formatDateTickShort } from "../../../utils/format";

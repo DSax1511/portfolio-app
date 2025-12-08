@@ -16,10 +16,19 @@ import { formatDateTick, formatDateTickShort } from "../../../utils/format";
 const formatGrowth = (value) => `${((value - 1) * 100).toFixed(2)}%`;
 const formatRelative = (value) => `${(value * 100).toFixed(2)}%`;
 
-const EquityCurveChart = ({ combinedSeries, onHover, hoveredDate }) => {
+const EquityCurveChart = ({ combinedSeries = [], onHover = () => {}, hoveredDate }) => {
   const [showRelative, setShowRelative] = useState(true);
 
   const data = useMemo(() => combinedSeries || [], [combinedSeries]);
+
+  // Safety check for empty data
+  if (!data || data.length === 0) {
+    return (
+      <div className="chart-wrapper" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        No equity curve data available
+      </div>
+    );
+  }
 
   return (
     <div className="chart-wrapper">

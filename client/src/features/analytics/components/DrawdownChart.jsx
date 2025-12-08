@@ -7,11 +7,22 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  CartesianGrid,
 } from "recharts";
+import { formatDateTick, formatDateTickShort } from "../../../utils/format";
 
 const formatDrawdown = (value) => `${(value * 100).toFixed(2)}%`;
 
-const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover }) => {
+const DrawdownChart = ({ drawdownSeries = [], maxDrawdownWindow, hoveredDate, onHover = () => {} }) => {
+  // Safety check for empty data
+  if (!drawdownSeries || drawdownSeries.length === 0) {
+    return (
+      <div className="chart-wrapper" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        No drawdown data available
+      </div>
+    );
+  }
+
   const hasHighlight = maxDrawdownWindow && drawdownSeries.length > 0;
   const highlightStart = hasHighlight ? maxDrawdownWindow.startDate : null;
   const highlightEnd =
@@ -31,7 +42,9 @@ const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover
             if (state?.activeLabel) onHover(state.activeLabel);
           }}
           onMouseLeave={() => onHover(null)}
+          margin={{ left: 8, right: 24, top: 12, bottom: 0 }}
         >
+          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
           <XAxis
             dataKey="date"
             tickFormatter={formatDateTick}
@@ -71,4 +84,3 @@ const DrawdownChart = ({ drawdownSeries, maxDrawdownWindow, hoveredDate, onHover
 };
 
 export default DrawdownChart;
-import { formatDateTick, formatDateTickShort } from "../../../utils/format";
