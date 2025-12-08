@@ -321,6 +321,8 @@ const AppContent = () => {
   const [savedPortfolio, setSavedPortfolio] = useState([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [demoMode, setDemoMode] = useState(false);
+  const [activeDemo, setActiveDemo] = useState(null);
   const [latestRiskPayload, setLatestRiskPayload] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const demoNotionalsRef = useRef(null);
