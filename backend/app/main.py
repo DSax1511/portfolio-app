@@ -77,6 +77,8 @@ from .models import (
     QuantBacktestResponse,
     RegimeRequest,
     RegimeResponse,
+    RTTSMOMRequest,
+    RTTSMOMResponse,
     PMBacktestRequest,
     PMBacktestResponse,
     MicrostructureRequest,
@@ -1891,6 +1893,45 @@ def momentum(request: MomentumRequest) -> Dict[str, Any]:
     )
 
     return result
+
+
+@app.post("/api/v1/strategies/rt-tsmom")
+def rt_tsmom_backtest(request: RTTSMOMRequest) -> RTTSMOMResponse:
+    """
+    RT-TSMOM: Regime-Tuned Time-Series Momentum Strategy.
+
+    Flagship alpha model combining:
+    - Cross-sectional momentum ranking (12-month returns)
+    - Volatility targeting (10% annualized by default)
+    - Regime-aware position scaling (reduces exposure in Risk-Off)
+    - Monthly rebalancing
+
+    Default universe: Sector ETFs (XLK, XLE, XLF, etc.)
+
+    Returns complete backtest with equity curve, metrics, and regime breakdown.
+    """
+    from .strategies import rt_tsmom
+
+    logger.info(
+        "rt_tsmom: %d tickers, lookback=%d, target_vol=%.2f%%, regime=%s",
+        len(request.tickers),
+        request.lookback,
+        request.target_vol * 100,
+        "ON" if request.use_regime else "OFF"
+    )
+
+    result = rt_tsmom.backtest_rt_tsmom(
+        tickers=request.tickers,
+        start_date=request.start_date or (dt.datetime.now() - dt.timedelta(days=3*365)).strftime("%Y-%m-%d"),
+        end_date=request.end_date or dt.datetime.now().strftime("%Y-%m-%d"),
+        lookback=request.lookback,
+        target_vol=request.target_vol,
+        regime_scaling=request.regime_scaling,
+        rebalance_freq=request.rebalance_freq,
+        use_regime=request.use_regime,
+    )
+
+    return RTTSMOMResponse(**result)
 
 
 @app.post("/api/quant/var-cvar")

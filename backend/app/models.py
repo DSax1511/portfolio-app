@@ -645,3 +645,31 @@ class RegimeResponse(BaseModel):
 
 # Resolve forward references for pydantic
 RegimeResponse.update_forward_refs(RegimeSummary=RegimeSummary, RegimePoint=RegimePoint)
+
+
+class RTTSMOMRequest(BaseModel):
+    """Request schema for RT-TSMOM (Regime-Tuned Time-Series Momentum) backtest."""
+
+    tickers: List[str] = [
+        "XLK", "XLE", "XLF", "XLI", "XLP",
+        "XLU", "XLV", "XLY", "XLRE", "XLC", "XLB"
+    ]
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    lookback: int = 252
+    target_vol: float = 0.10
+    regime_scaling: float = 0.5
+    use_regime: bool = True
+    rebalance_freq: str = "monthly"
+
+
+class RTTSMOMResponse(BaseModel):
+    """Response schema for RT-TSMOM backtest."""
+
+    dates: List[str]
+    equity_curve: List[float]
+    returns: List[float]
+    metrics: Dict[str, float]
+    regime_performance: Dict[str, Any]
+    strategy_name: str = "RT-TSMOM"
+    description: str = "Regime-Tuned Time-Series Momentum with volatility targeting"

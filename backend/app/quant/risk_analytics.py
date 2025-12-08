@@ -67,8 +67,12 @@ def compute_var_cvar(
         if distribution == "normal":
             cvar = sigma * stats.norm.pdf(z_score) / alpha - mu
         else:
-            # Approximate CVaR for t-distribution
-            cvar = var * 1.2  # Rough approximation
+            # Analytical CVaR for t-distribution
+            # CVaR = mu + sigma * E[T | T < t_alpha] where T ~ t(df)
+            t_alpha = stats.t.ppf(alpha, df)
+            pdf_val = stats.t.pdf(t_alpha, df)
+            conditional_expectation = -(df / (df - 1)) * pdf_val / alpha * ((df + t_alpha**2) / df)
+            cvar = -(loc + scale * conditional_expectation)
 
     elif method == "cornish_fisher":
         # Cornish-Fisher expansion for non-normal distributions
@@ -90,6 +94,16 @@ def compute_var_cvar(
         raise ValueError(f"Unknown method: {method}")
 
     # Annualized metrics
+    # Note: This assumes IID returns and scales VaR by sqrt(252).
+    # For non-normal distributions or autocorrelated returns, this may underestimate tail risk.
+    # More sophisticated approaches (e.g., Monte Carlo with fat tails, GARCH-based forecasting)
+    # should be used for production risk systems.
+    #
+    # Why sqrt(252)?
+    # - Assumes daily returns are IID with stable variance σ²
+    # - Variance of T-day sum = T * σ² (additivity of variance for independent variables)
+    # - Standard deviation (and VaR) scales as sqrt(T)
+    # - For trading days: sqrt(252) ≈ 15.87
     var_annual = var * np.sqrt(252)
     cvar_annual = cvar * np.sqrt(252)
 
@@ -221,7 +235,14 @@ def pca_decomposition(
         raise ValueError("Insufficient data for PCA (need 20+ observations)")
 
     # Standardize returns
-    returns_std = (returns_clean - returns_clean.mean()) / returns_clean.std()
+    means = returns_clean.mean()
+    stds = returns_clean.std()
+
+    # Replace zero/near-zero std with small value to prevent div by zero
+    stds = stds.replace(0, 1e-8)
+    stds = stds.where(stds > 1e-8, 1e-8)
+
+    returns_std = (returns_clean - means) / stds
 
     # Fit PCA
     pca = PCA(n_components=n_components)

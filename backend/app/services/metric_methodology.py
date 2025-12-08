@@ -79,6 +79,24 @@ METRIC_METHODS: Dict[str, MetricMethodology] = {
         window_length="Full sample",
         assumptions="Historical tail losses are representative of future extremes.",
     ),
+    "max_drawdown": MetricMethodology(
+        title="Maximum Drawdown",
+        description="Largest peak-to-trough decline in cumulative returns, measuring worst historical loss.",
+        window_length="Full sample",
+        assumptions="Historical maximum drawdown represents worst-case scenario risk. Floored at -99.9% for unlevered portfolios.",
+    ),
+    "calmar_ratio": MetricMethodology(
+        title="Calmar Ratio",
+        description="CAGR divided by absolute maximum drawdown, balancing return against worst loss.",
+        window_length="Full sample",
+        assumptions="Historical drawdown is representative of future downside risk.",
+    ),
+    "omega_ratio": MetricMethodology(
+        title="Omega Ratio",
+        description="Ratio of probability-weighted gains to losses above a minimum acceptable return (MAR).",
+        window_length="Full sample",
+        assumptions="Higher-order moments matter; captures entire return distribution shape.",
+    ),
 }
 
 

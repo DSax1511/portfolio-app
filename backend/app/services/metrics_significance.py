@@ -17,6 +17,9 @@ METRIC_SIGNIFICANCE_CONFIG: Dict[str, Dict[str, Any]] = {
     "var_95_hist": {"threshold": 0.02, "methodology_id": "var_95_hist"},
     "var_99_hist": {"threshold": 0.03, "methodology_id": "var_99_hist"},
     "cvar_95": {"threshold": 0.02, "methodology_id": "cvar_95"},
+    "max_drawdown": {"threshold": 0.05, "methodology_id": "max_drawdown"},
+    "calmar_ratio": {"threshold": 0.3, "methodology_id": "calmar_ratio"},
+    "omega_ratio": {"threshold": 1.1, "methodology_id": "omega_ratio"},
 }
 
 DEFAULT_SIGNIFICANCE_HINT = "Not statistically distinguishable from noise for the observed sample size."
@@ -116,3 +119,18 @@ def annotate_correlation_rows(rows: Iterable[Dict[str, Any]], sample_size: Optio
             entry["metric_metadata"] = detail
         annotated.append(entry)
     return annotated
+
+
+def get_significance_badge(metric_key: str, value: float, sample_size: Optional[int]) -> str:
+    """
+    Return a significance badge for display purposes.
+
+    Returns:
+        "✓" - Statistically significant
+        "~" - Not significant (likely noise)
+        "✗" - Unable to assess (missing config or invalid value)
+    """
+    metadata = evaluate_metric_metadata(metric_key, value, sample_size)
+    if metadata is None:
+        return "✗"
+    return "✓" if metadata["is_significant"] else "~"

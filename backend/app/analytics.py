@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -12,6 +13,13 @@ from .infra.utils import normalize_weights
 from .rebalance import suggest_rebalance
 
 
+def _sanitize_float(value: float, default: float = 0.0) -> float:
+    """Sanitize float values to prevent NaN/Inf from propagating."""
+    if not math.isfinite(value):
+        return default
+    return float(value)
+
+
 def compute_portfolio_returns(prices: pd.DataFrame, weights: List[float]) -> pd.Series:
     """Compute daily portfolio returns given price history and weights."""
     returns = prices.pct_change().dropna()
@@ -20,35 +28,60 @@ def compute_portfolio_returns(prices: pd.DataFrame, weights: List[float]) -> pd.
 
 
 def compute_performance_stats(returns: pd.Series) -> Dict[str, float]:
-    """Calculate common performance metrics; returns JSON-serializable floats."""
+    """
+    Calculate common performance metrics; returns JSON-serializable floats.
+
+    Safeguards:
+    - Checks for negative equity (unlevered portfolios should floor at zero)
+    - Floors max drawdown at -99.9% for unlevered strategies
+    - Sanitizes all float outputs to prevent NaN/Inf propagation
+    """
     if returns.empty:
         raise HTTPException(status_code=400, detail="Not enough data to compute performance statistics.")
 
     equity = (1 + returns).cumprod()
+
+    # Check for negative equity (should never occur in unlevered portfolios)
+    min_equity = equity.min()
+    if min_equity < 0.01:
+        warnings.warn(
+            f"Equity curve has a minimum value of {min_equity:.4f}, which is close to or below zero. "
+            "This suggests calculation errors or extreme leverage."
+        )
+
     total_return = equity.iloc[-1] - 1
 
     periods_per_year = 252
-    annualized_return = float((1 + total_return) ** (periods_per_year / len(returns)) - 1)
-    annualized_vol = float(returns.std() * math.sqrt(periods_per_year))
-    sharpe_ratio = float(annualized_return / annualized_vol) if annualized_vol != 0 else 0.0
+    annualized_return = (1 + total_return) ** (periods_per_year / len(returns)) - 1
+    annualized_vol = returns.std() * math.sqrt(periods_per_year)
+    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0.0
 
     running_max = equity.cummax()
     drawdowns = equity / running_max - 1
-    max_drawdown = float(drawdowns.min())
+    max_drawdown = drawdowns.min()
+
+    # Floor drawdown at -99.9% for unlevered portfolios
+    DRAWDOWN_FLOOR = -0.999
+    if max_drawdown < DRAWDOWN_FLOOR:
+        warnings.warn(
+            f"Max drawdown of {max_drawdown:.2%} exceeds -99.9%, which is implausible for unlevered strategies. "
+            "Flooring at -99.9%."
+        )
+        max_drawdown = DRAWDOWN_FLOOR
 
     return {
-        "cumulative_return": float(total_return),
-        "annualized_return": annualized_return,
-        "annualized_volatility": annualized_vol,
-        "sharpe_ratio": sharpe_ratio,
-        "max_drawdown": max_drawdown,
+        "cumulative_return": _sanitize_float(total_return),
+        "annualized_return": _sanitize_float(annualized_return),
+        "annualized_volatility": _sanitize_float(annualized_vol),
+        "sharpe_ratio": _sanitize_float(sharpe_ratio),
+        "max_drawdown": _sanitize_float(max_drawdown),
     }
 
 
 def equity_curve_payload(returns: pd.Series) -> Dict[str, List[Any]]:
     equity = (1 + returns).cumprod()
     dates = [idx.strftime("%Y-%m-%d") for idx in equity.index]
-    values = [float(v) for v in equity.values]
+    values = [_sanitize_float(v, default=1.0) for v in equity.values]
     return {"dates": dates, "equity": values}
 
 
@@ -57,21 +90,21 @@ def risk_breakdown(prices: pd.DataFrame, weights: List[float]) -> Dict[str, Any]
     cov = rets.cov()
     vols = rets.std()
     w = np.array(weights)
-    port_var = float(w.T @ cov.values @ w)
+    port_var = w.T @ cov.values @ w
     port_vol = port_var ** 0.5
     marginal = cov.values @ w
     contrib = w * marginal
     pct_contrib = contrib / port_var if port_var != 0 else np.zeros_like(contrib)
-    diversification_ratio = float((vols.values @ w) / port_vol) if port_vol != 0 else 0.0
+    diversification_ratio = (vols.values @ w) / port_vol if port_vol != 0 else 0.0
     corr = rets.corr()
     return {
-        "portfolio_vol": port_vol,
+        "portfolio_vol": _sanitize_float(port_vol),
         "contribution": [
-            {"ticker": t, "pct_variance": float(pc)}
+            {"ticker": t, "pct_variance": _sanitize_float(pc)}
             for t, pc in zip(prices.columns, pct_contrib)
         ],
         "correlation": corr.to_dict(),
-        "diversification_ratio": diversification_ratio,
+        "diversification_ratio": _sanitize_float(diversification_ratio),
     }
 
 
@@ -93,13 +126,13 @@ def factor_regression(portfolio_returns: pd.Series, start: Optional[str], end: O
     r2 = 1 - np.var(residuals) / np.var(y) if np.var(y) != 0 else 0.0
     factor_names = list(factor_returns.columns)
     return {
-        "intercept": float(intercept),
-        "r2": float(r2),
+        "intercept": _sanitize_float(intercept),
+        "r2": _sanitize_float(r2),
         "loadings": [
-            {"factor": name, "beta": float(beta)}
+            {"factor": name, "beta": _sanitize_float(beta)}
             for name, beta in zip(factor_names, loadings)
         ],
-        "residual_vol": float(np.std(residuals)),
+        "residual_vol": _sanitize_float(np.std(residuals)),
     }
 
 
@@ -119,16 +152,16 @@ def benchmark_compare(portfolio_returns: pd.Series, benchmark: str, start: Optio
     alpha = betas[0] * 252  # annualize intercept
     beta = betas[1]
     active = aligned_port - bench_returns
-    tracking_error = float(active.std() * math.sqrt(252))
-    annual_excess = float((1 + aligned_port).prod() ** (252 / len(aligned_port)) - (1 + bench_returns).prod() ** (252 / len(bench_returns)))
+    tracking_error = active.std() * math.sqrt(252)
+    annual_excess = (1 + aligned_port).prod() ** (252 / len(aligned_port)) - (1 + bench_returns).prod() ** (252 / len(bench_returns))
     return {
-        "alpha": float(alpha),
-        "beta": float(beta),
-        "tracking_error": tracking_error,
+        "alpha": _sanitize_float(alpha),
+        "beta": _sanitize_float(beta),
+        "tracking_error": _sanitize_float(tracking_error),
         "benchmark": benchmark,
-        "portfolio_cagr": float((1 + aligned_port).prod() ** (252 / len(aligned_port)) - 1),
-        "benchmark_cagr": float((1 + bench_returns).prod() ** (252 / len(bench_returns)) - 1),
-        "annual_excess_return": annual_excess,
+        "portfolio_cagr": _sanitize_float((1 + aligned_port).prod() ** (252 / len(aligned_port)) - 1),
+        "benchmark_cagr": _sanitize_float((1 + bench_returns).prod() ** (252 / len(bench_returns)) - 1),
+        "annual_excess_return": _sanitize_float(annual_excess),
     }
 
 
@@ -229,8 +262,8 @@ def attribution_allocation_selection(port_returns: pd.Series, bench_returns: pd.
     selection = sum(bw * (asset_rets["portfolio"].mean() - asset_rets["benchmark"].mean()) for bw in bench_weights)
     interaction = sum((w - bw) * (asset_rets["portfolio"].mean() - asset_rets["benchmark"].mean()) for w, bw in zip(weights, bench_weights))
     return {
-        "allocation": float(allocation),
-        "selection": float(selection),
-        "interaction": float(interaction),
-        "total": float(allocation + selection + interaction),
+        "allocation": _sanitize_float(allocation),
+        "selection": _sanitize_float(selection),
+        "interaction": _sanitize_float(interaction),
+        "total": _sanitize_float(allocation + selection + interaction),
     }
