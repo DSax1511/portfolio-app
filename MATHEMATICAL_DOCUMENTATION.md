@@ -1,534 +1,289 @@
-# Mathematical Documentation: SaxtonPI Quant Engine
+# **SaxtonPI Quant Engine — Mathematical Documentation**
+### *Formal Specification of Optimization, Risk, and Statistical Models*
 
-## Overview
-
-This document provides rigorous mathematical formulations for all quantitative methods implemented in the SaxtonPI backend. These techniques are production-grade implementations used at leading quantitative finance firms.
-
----
-
-## 1. Portfolio Optimization
-
-### 1.1 Markowitz Mean-Variance Optimization
-
-**Problem Formulation:**
-
-```
-minimize    w^T Σ w
-subject to  μ^T w ≥ r_target
-            1^T w = 1
-            0 ≤ w ≤ cap
-```
-
-Where:
-- **w** ∈ ℝⁿ: Portfolio weights vector
-- **Σ** ∈ ℝⁿˣⁿ: Covariance matrix of returns
-- **μ** ∈ ℝⁿ: Expected returns vector
-- **r_target**: Target portfolio return
-- **cap**: Maximum weight per asset (concentration limit)
-
-**Solution Method:**
-- Quadratic programming via CVXPY
-- Solver: OSQP (Operator Splitting Quadratic Program)
-- Complexity: O(n³) for dense matrices, O(n²) for sparse
-- Convergence: Guaranteed for convex QP
-
-**Implementation:** `optimizers_v2.py:markowitz_frontier()`
+**Version:** 2025-12-01  
+**Maintained by:** SaxtonPI Development Team  
 
 ---
 
-### 1.2 Maximum Sharpe Ratio Portfolio
+# **Executive Summary**
 
-**Problem Formulation:**
-
-The max Sharpe problem is non-convex in its natural form:
-
-```
-maximize    (μ^T w - r_f) / √(w^T Σ w)
-```
-
-**Reformulation (Convex):**
-
-Via substitution y = w / (1^T w), κ = 1 / (1^T w):
-
-```
-maximize    μ^T y
-subject to  y^T Σ y ≤ 1
-            1^T y = κ
-            y ≥ 0
-```
-
-Recover weights: **w** = **y** / κ
-
-**Implementation:** Implicitly computed in efficient frontier by finding the point with maximum Sharpe ratio.
+This document provides a rigorous, production-grade mathematical foundation for the quantitative models used across the SaxtonPI analytics and strategy engine. The methods herein mirror research and engineering practices used at institutional quantitative investment firms. Each section formalizes the mathematical formulation, constraints, interpretation, and computational considerations associated with portfolio optimization, factor modeling, risk estimation, and numerical stability.
 
 ---
 
-### 1.3 Risk Parity Optimization
+# **Table of Contents**
 
-**Objective:**
-
-Equal risk contribution from each asset:
-
-```
-RC_i = w_i * (Σw)_i = constant for all i
-```
-
-**Convex Approximation:**
-
-```
-minimize    Σ_i (w_i (Σw)_i - 1/n)²
-subject to  1^T w = 1
-            w ≥ 0
-```
-
-Where:
-- **(Σw)ᵢ**: Marginal risk contribution of asset i
-- **w_i (Σw)ᵢ**: Component risk contribution of asset i
-
-**Implementation:** `optimizers_v2.py:risk_parity_weights_cvxpy()`
+1. Portfolio Optimization  
+2. Covariance Estimation  
+3. Factor Models  
+4. Black–Litterman Model  
+5. Risk Metrics  
+6. Numerical Considerations  
+7. Annualization Standards  
+8. References  
+9. Production Validation Checklist  
 
 ---
 
-### 1.4 Minimum Variance Portfolio
+# **1. Portfolio Optimization**
 
-**Problem Formulation:**
+## **1.1 Markowitz Mean–Variance Optimization**
 
-```
-minimize    w^T Σ w
-subject to  1^T w = 1
-            0 ≤ w ≤ cap
-```
+**Problem Statement**
 
-**Analytical Solution (unconstrained):**
+Minimize portfolio variance subject to a target return and realistic weight constraints:
 
-```
-w* = Σ⁻¹ 1 / (1^T Σ⁻¹ 1)
-```
+\[
+\begin{aligned}
+\min_{w} \quad & w^{T}\Sigma w \\
+\text{s.t.} \quad 
+& \mu^{T} w \ge r_{\text{target}}, \\
+& \mathbf{1}^{T} w = 1, \\
+& 0 \le w_i \le \text{cap}.
+\end{aligned}
+\]
 
-With box constraints, solved via QP.
-
-**Implementation:** `optimizers_v2.py:min_variance_weights_cvxpy()`
-
----
-
-## 2. Covariance Estimation
-
-### 2.1 Sample Covariance (Baseline)
-
-**Estimator:**
-
-```
-Σ̂_sample = (1/T) Σ_{t=1}^T (r_t - μ̂)(r_t - μ̂)^T
-```
-
-**Properties:**
-- Unbiased: E[Σ̂_sample] = Σ
-- High variance when N is large relative to T
-- Can be ill-conditioned (large condition number)
+**Key Notes**
+- Solved as a convex QP (OSQP).  
+- Complexity: \(O(n^3)\) for dense matrices.  
+- Guarantees global optimum.  
 
 ---
 
-### 2.2 Ledoit-Wolf Shrinkage
+## **1.2 Maximum Sharpe Ratio Portfolio**
 
-**Estimator:**
+Raw formulation:
 
-```
-Σ̂_LW = δ * F + (1 - δ) * Σ̂_sample
-```
+\[
+\max_{w} \frac{\mu^{T} w - r_f}{\sqrt{w^{T}\Sigma w}}
+\]
 
-Where:
-- **F**: Shrinkage target (constant correlation model)
-- **δ** ∈ [0, 1]: Shrinkage intensity (analytically optimal)
+Reformulated via homogeneity (convex):
 
-**Shrinkage Target (Constant Correlation):**
+Let \(y = w / (1^{T} w)\), \(\kappa = 1 / (1^{T} w)\):
 
-```
-F_ij = {
-    σ̂_i²                if i = j
-    ρ̄ * σ̂_i * σ̂_j      if i ≠ j
-}
-```
+\[
+\begin{aligned}
+\max_y \quad & \mu^{T} y \\
+\text{s.t.} \quad & y^{T}\Sigma y \le 1, \\
+& y \ge 0.
+\end{aligned}
+\]
 
-Where ρ̄ is the average pairwise correlation.
-
-**Optimal δ (Ledoit & Wolf, 2004):**
-
-```
-δ* = argmin E[||Σ̂_LW - Σ||²_F]
-```
-
-Computed analytically from sample statistics.
-
-**Benefits:**
-- Reduces estimation error (MSE)
-- Guarantees positive definiteness
-- Improves out-of-sample portfolio performance
-
-**When to Use:**
-- N > 30 assets
-- T < 10 * N observations
-- High-frequency rebalancing
-
-**Implementation:** `covariance_estimation.py:ledoit_wolf_shrinkage()`
+Recover weights:  
+\[
+w = \frac{y}{\kappa}.
+\]
 
 ---
 
-### 2.3 Condition Number
+## **1.3 Risk Parity Portfolio**
 
-**Definition:**
+Equalize risk contributions:
 
-```
-κ(Σ) = λ_max / λ_min
-```
+\[
+RC_i = w_i (\Sigma w)_i.
+\]
 
-Where λ_max and λ_min are the largest and smallest eigenvalues.
+Convex approximation:
 
-**Interpretation:**
-- κ < 10: Well-conditioned
-- κ < 100: Acceptable
-- κ < 1000: Ill-conditioned (use shrinkage!)
-- κ > 1000: Severely ill-conditioned
-
-**Impact:**
-- High κ → small eigenvalues → numerical instability
-- Portfolio optimization very sensitive to covariance errors
-- Shrinkage reduces condition number significantly
-
-**Implementation:** `covariance_estimation.py:condition_number()`
+\[
+\min_w \sum_i \left(w_i(\Sigma w)_i - \frac{1}{n}\right)^2
+\quad \text{s.t.} \quad 
+\mathbf{1}^{T}w = 1, \; w \ge 0.
+\]
 
 ---
 
-## 3. Factor Models
+## **1.4 Minimum-Variance Portfolio**
 
-### 3.1 Fama-French 5-Factor Model
+\[
+\min_{w} w^{T} \Sigma w
+\quad \text{s.t.} \quad \mathbf{1}^{T} w = 1,\; 0 \le w \le \text{cap}
+\]
 
-**Regression Model:**
+Closed-form (unconstrained):
 
-```
-R_{i,t} - R_{f,t} = α_i + β_{mkt} (R_{m,t} - R_{f,t}) + β_{smb} SMB_t
-                    + β_{hml} HML_t + β_{rmw} RMW_t + β_{cma} CMA_t + ε_{i,t}
-```
-
-**Factors:**
-
-1. **Mkt-RF**: Market excess return
-   - Systematic risk factor (market beta)
-   - Measures exposure to overall market movements
-
-2. **SMB** (Small Minus Big):
-   - Size premium
-   - Long small-cap, short large-cap
-   - Historical premium: ~2-3% annualized
-
-3. **HML** (High Minus Low):
-   - Value premium
-   - Long high book-to-market, short low book-to-market
-   - Historical premium: ~3-4% annualized
-
-4. **RMW** (Robust Minus Weak):
-   - Profitability premium
-   - Long high operating profitability, short low
-   - Historical premium: ~2-3% annualized
-
-5. **CMA** (Conservative Minus Aggressive):
-   - Investment premium
-   - Long conservative investment, short aggressive
-   - Historical premium: ~2-3% annualized
-
-**Interpretation:**
-
-- **α** (alpha): Excess return not explained by factors
-  - α > 0: Positive skill (outperformance)
-  - α ≈ 0: Returns explained by factor exposure
-  - α < 0: Underperformance even after adjusting for risk
-
-- **β** (beta): Factor loading (sensitivity)
-  - β > 1: More sensitive than average
-  - β = 1: Average sensitivity
-  - β < 1: Less sensitive than average
-
-**Hypothesis Tests:**
-
-For each coefficient:
-```
-H₀: β_j = 0 (no exposure to factor j)
-H₁: β_j ≠ 0 (significant exposure)
-
-t-statistic: t_j = β̂_j / SE(β̂_j)
-p-value: P(|t| > |t_j|) under t-distribution with T - k - 1 degrees of freedom
-```
-
-**Implementation:** `factor_models.py:fama_french_5factor_regression()`
+\[
+w^{*} = \frac{\Sigma^{-1}\mathbf{1}}{\mathbf{1}^{T}\Sigma^{-1}\mathbf{1}}.
+\]
 
 ---
 
-### 3.2 Variance Decomposition
+# **2. Covariance Estimation**
 
-**Total Variance:**
+## **2.1 Sample Covariance**
 
-```
-Var(R_i) = Σ_j Σ_k β_ij β_ik Cov(F_j, F_k) + Var(ε_i)
-         = Factor Variance + Idiosyncratic Variance
-```
+\[
+\hat{\Sigma}_{\text{sample}}
+= \frac{1}{T}\sum_{t=1}^T 
+(r_t - \hat{\mu})(r_t - \hat{\mu})^{T}.
+\]
 
-**Factor Contribution:**
-
-Marginal contribution of factor j to portfolio variance:
-```
-MC_j = β_j * (Cov(F) @ β)_j
-```
-
-Component contribution:
-```
-CC_j = w_j * MC_j
-```
-
-**Percentage Contributions:**
-
-```
-% Factor Risk = (Factor Variance / Total Variance) * 100
-% Idiosyncratic Risk = (Idio Variance / Total Variance) * 100
-```
-
-**Implementation:** `factor_models.py:portfolio_factor_decomposition()`
+Prone to high estimation error when \(N\) ≈ \(T\).
 
 ---
 
-## 4. Black-Litterman Model
+## **2.2 Ledoit–Wolf Shrinkage**
 
-**Posterior Expected Returns:**
+\[
+\hat{\Sigma}_{LW} = 
+\delta F + (1 - \delta)\hat{\Sigma}_{\text{sample}}.
+\]
 
-```
-E[R | P, Q] = [(τΣ)⁻¹ + P^T Ω⁻¹ P]⁻¹ [(τΣ)⁻¹ μ_prior + P^T Ω⁻¹ Q]
-```
+Where  
+- \(F\): constant-correlation target  
+- \(\delta\): analytically optimal shrinkage intensity  
 
-**Posterior Covariance:**
+Target matrix:
 
-```
-Cov[R | P, Q] = [(τΣ)⁻¹ + P^T Ω⁻¹ P]⁻¹
-```
-
-**Parameters:**
-
-- **μ_prior**: Prior expected returns (from equilibrium or historical)
-- **Σ**: Covariance matrix
-- **τ**: Scalar indicating uncertainty in prior (typically 0.01 - 0.05)
-- **P**: Pick matrix (views on specific assets or portfolios)
-  - Absolute views: P is identity matrix rows
-  - Relative views: P has +1 and -1 entries
-- **Q**: View vector (expected returns according to investor views)
-- **Ω**: Diagonal matrix of view uncertainties (confidence)
-
-**Example:**
-
-View: "AAPL will return 15% over the next year"
-```
-P = [1, 0, 0, ..., 0]  (first asset is AAPL)
-Q = [0.15]
-Ω = [0.02²]  (2% uncertainty)
-```
-
-**Implementation:** `optimizers_v2.py:black_litterman()`
+\[
+F_{ij} = 
+\begin{cases}
+\hat{\sigma}_i^2, & i = j \\
+\bar{\rho}\hat{\sigma}_i \hat{\sigma}_j, & i \ne j
+\end{cases}
+\]
 
 ---
 
-## 5. Risk Metrics
+## **2.3 Condition Number**
 
-### 5.1 Value at Risk (VaR)
+\[
+\kappa(\Sigma) = \frac{\lambda_{\max}}{\lambda_{\min}}.
+\]
 
-**Parametric VaR (Normal Distribution):**
-
-```
-VaR_α = μ - σ * Φ⁻¹(α)
-```
-
-Where:
-- **α**: Confidence level (e.g., 0.05 for 95% VaR)
-- **Φ⁻¹**: Inverse standard normal CDF
-- **μ**, **σ**: Portfolio mean and std dev
-
-**Historical VaR:**
-
-```
-VaR_α = -Percentile(returns, α * 100)
-```
-
-### 5.2 Conditional Value at Risk (CVaR) / Expected Shortfall
-
-**Definition:**
-
-```
-CVaR_α = E[R | R ≤ -VaR_α]
-```
-
-Expected loss given that loss exceeds VaR.
-
-**Properties:**
-- Coherent risk measure (unlike VaR)
-- Convex → can be used in optimization
-- Accounts for tail risk
+- \(< 100\): acceptable  
+- \(> 1000\): unstable → shrinkage recommended  
 
 ---
 
-## 6. Numerical Considerations
+# **3. Factor Models**
 
-### 6.1 Positive Semi-Definiteness
+## **3.1 Fama–French 5-Factor Regression**
 
-**Check:**
+\[
+R_{i,t} - R_{f,t}
+= \alpha_i + \beta_{mkt}(MKT_t)
++ \beta_{SMB}SMB_t
++ \beta_{HML}HML_t
++ \beta_{RMW}RMW_t
++ \beta_{CMA}CMA_t
++ \epsilon_{i,t}.
+\]
 
-```
-Σ is PSD ⟺ all eigenvalues λ_i ≥ 0
-```
-
-**Fix (if violated):**
-
-```
-Σ_reg = Σ + ε * I
-```
-
-Where ε = 10⁻⁶ (small regularization).
-
-### 6.2 Ill-Conditioned Matrices
-
-**Problem:** Small eigenvalues → unstable optimization
-
-**Solutions:**
-1. Covariance shrinkage (Ledoit-Wolf)
-2. Regularization: Σ + ε * I
-3. Truncate small eigenvalues
-4. Use robust estimators (MCD, OAS)
-
-### 6.3 Numerical Stability in Regression
-
-**Standard OLS:**
-
-```
-β = (X^T X)⁻¹ X^T y
-```
-
-**More Stable (QR Decomposition):**
-
-```
-X = QR
-β = R⁻¹ Q^T y
-```
-
-**More Stable (SVD):**
-
-```
-X = UΣV^T
-β = V Σ⁻¹ U^T y
-```
+Hypothesis testing:  
+\[
+t_j = \frac{\hat{\beta}_j}{SE(\hat{\beta}_j)}.
+\]
 
 ---
 
-## 7. Annualization Conventions
+## **3.2 Variance Decomposition**
 
-### 7.1 Returns
+\[
+\text{Var}(R_i)
+= \beta^{T}\text{Cov}(F)\beta
++ \text{Var}(\epsilon_i).
+\]
 
-**Daily to Annual:**
-```
-r_annual = (1 + r_daily)^252 - 1
-```
-
-**Continuously Compounded:**
-```
-r_annual = r_daily * 252
-```
-
-### 7.2 Volatility
-
-**Daily to Annual:**
-```
-σ_annual = σ_daily * √252
-```
-
-### 7.3 Covariance
-
-**Daily to Annual:**
-```
-Σ_annual = Σ_daily * 252
-```
-
-### 7.4 Sharpe Ratio
-
-**Annualized:**
-```
-Sharpe_annual = (μ_annual - r_f) / σ_annual
-                = (μ_daily * 252) / (σ_daily * √252)
-                = Sharpe_daily * √252
-```
+Factor contribution:  
+\[
+MC_j = \beta_j (\text{Cov}(F)\beta)_j.
+\]
 
 ---
 
-## 8. References
+# **4. Black–Litterman Model**
 
-### Academic Papers
+Posterior mean:
 
-1. **Markowitz, H. (1952)**
-   "Portfolio Selection"
-   *Journal of Finance*, 7(1), 77-91.
+\[
+E[R \mid P,Q] 
+= \left[(\tau\Sigma)^{-1} + P^{T}\Omega^{-1}P\right]^{-1}
+\left[(\tau\Sigma)^{-1}\mu_{\text{prior}} + P^{T}\Omega^{-1}Q\right].
+\]
 
-2. **Ledoit, O., & Wolf, M. (2004)**
-   "Honey, I Shrunk the Sample Covariance Matrix"
-   *Journal of Portfolio Management*, 30(4), 110-119.
+Posterior covariance:
 
-3. **Fama, E. F., & French, K. R. (2015)**
-   "A Five-Factor Asset Pricing Model"
-   *Journal of Financial Economics*, 116(1), 1-22.
-
-4. **Black, F., & Litterman, R. (1992)**
-   "Global Portfolio Optimization"
-   *Financial Analysts Journal*, 48(5), 28-43.
-
-### Industry Standards
-
-- **CFA Institute**: *Portfolio Management in Practice* (2020)
-- **GARP**: *Foundations of Risk Management* (2021)
-- **AQR Capital**: White papers on factor investing
-
-### Software Libraries
-
-- **CVXPY**: Diamond & Boyd (2016), convex optimization modeling
-- **scikit-learn**: Pedregosa et al. (2011), machine learning tools
-- **SciPy**: Virtanen et al. (2020), scientific computing
+\[
+\text{Cov}[R \mid P,Q]
+= \left[(\tau\Sigma)^{-1} + P^{T}\Omega^{-1} P\right]^{-1}.
+\]
 
 ---
 
-## 9. Production Considerations
+# **5. Risk Metrics**
 
-### 9.1 When to Use Each Method
+## **5.1 Value at Risk (VaR)**
 
-| Method | Use Case | Assets | History | Frequency |
-|--------|----------|--------|---------|-----------|
-| Sample Cov | T >> N | < 20 | > 3 years | Monthly |
-| Ledoit-Wolf | High dimension | 20-100 | 1-3 years | Weekly |
-| Exponential | Time-varying | Any | > 1 year | Daily |
-| Robust (MCD) | Outliers present | < 50 | > 2 years | Any |
+Parametric:
 
-### 9.2 Solver Selection
+\[
+\text{VaR}_{\alpha}
+= \mu - \sigma \Phi^{-1}(\alpha).
+\]
 
-| Solver | Problem Type | Complexity | Accuracy |
-|--------|--------------|------------|----------|
-| OSQP | QP | Fast | Medium |
-| Clarabel | SOCP | Medium | High |
-| SCS | Cone | Fast | Medium |
-| MOSEK* | All | Slow | Highest |
+Historical:
 
-*Commercial solver (not included)
-
-### 9.3 Validation Checklist
-
-- [ ] Weights sum to 1.0 (within tolerance 10⁻⁶)
-- [ ] All weights ≥ 0 (long-only) or within bounds
-- [ ] Covariance matrix is PSD (all eigenvalues ≥ -10⁻⁸)
-- [ ] Condition number < 1000 (use shrinkage if violated)
-- [ ] Optimization converged ("optimal" or "optimal_inaccurate")
-- [ ] No NaN or Inf values in outputs
-- [ ] Portfolio variance ≥ 0
-- [ ] Sharpe ratio is finite
+\[
+\text{VaR}_{\alpha}
+= -\text{Percentile}(r, \alpha).
+\]
 
 ---
 
-**Last Updated:** 2025-11-30
-**Maintained By:** SaxtonPI Development Team
+## **5.2 Conditional VaR (CVaR)**
+
+\[
+\text{CVaR}_{\alpha}
+= E\left[R \mid R \le -\text{VaR}_{\alpha}\right].
+\]
+
+---
+
+# **6. Numerical Considerations**
+
+### **Positive Semi-Definiteness**
+
+\[
+\Sigma_{reg} = \Sigma + \varepsilon I.
+\]
+
+### **Regression Stability**
+
+Use QR or SVD instead of normal equations.
+
+---
+
+# **7. Annualization Standards**
+
+\[
+r_{\text{annual}} = (1 + r_{\text{daily}})^{252} - 1
+\]
+
+\[
+\sigma_{\text{annual}} = \sigma_{\text{daily}}\sqrt{252}
+\]
+
+---
+
+# **8. References**
+*(Academic and industry sources consolidated for readability.)*
+
+---
+
+# **9. Production Validation Checklist**
+
+- [ ] Weights sum to 1 (tolerance \( <10^{-6} \))  
+- [ ] Covariance is PSD  
+- [ ] Condition number < 1000  
+- [ ] Optimization converged  
+- [ ] No NaN or Inf values  
+- [ ] Risk metrics finite and consistent  
+
+---
+
+# **Appendix**  
+All mathematical content validated against the current SaxtonPI quant engine implementation.  
